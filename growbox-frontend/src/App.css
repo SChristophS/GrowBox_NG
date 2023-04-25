@@ -1,0 +1,24 @@
+.App {
+  font-family: sans-serif;
+  text-align: center;
+}
+
+.cycles-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  margin: 1rem 0;
+}
+
+.led-cycles,
+.water-cycles,
+.temperature-cycles {
+  margin: 1rem;
+}
+
+@media (max-width: 768px) {
+  .cycles-container {
+    flex-direction: column;
+  }
+}
