@@ -1,0 +1,9 @@
+Ich benötige unter der Navbar ein neues Feld, es soll über Beleuchtung stehen.
+Der Name soll sein "Grow Setup"
+
+In dieser neuen Seite soll eine "Grow Gesamtdauer" input Feld sein.
+Die einheit soll Tage sein.
+
+Dieser Wert soll ebenfalls unter "Speichern" in das json gespeichert werden und in die Datenbank eingetragen werden.
+Aber hier bitte nicht als Tage, sondern als Minutenwert. Die Umrechnung sollte aber einfach sein.
+Den Wert würde ich gerne "TotalGrowTime" nennen in der json file.

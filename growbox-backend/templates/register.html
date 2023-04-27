@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        form {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        label, input {
+            display: block;
+        }
+        input {
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 20px;
+        }
+        #message {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+    <script>
+		async function submitForm(event) {
+			event.preventDefault();
+
+			const username = document.getElementById("username").value;
+			const password = document.getElementById("password").value;
+			const dummy1 = document.getElementById("dummy1").value;
+			const dummy2 = document.getElementById("dummy2").value;
+
+			try {
+				const response = await fetch("/register", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ "username": username, "password": password, "dummy1": dummy1, "dummy2": dummy2 }),
+				});
+
+				const data = await response.json();
+
+				if (data.message) {
+					document.getElementById("message").innerText = data.message;
+				}
+			} catch (error) {
+				console.error("Error:", error);
+			}
+		}
+
+    </script>
+</head>
+<body>
+    <form onsubmit="submitForm(event)">
+		<p id="message" style="text-align:center;"></p>
+        <h2>Register</h2>
+        <div>
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <div>
+            <label for="dummy1">Dummy1:</label>
+            <input type="text" id="dummy1" name="dummy1" required>
+        </div>
+        <div>
+            <label for="dummy2">Dummy2:</label>
+            <input type="text" id="dummy2" name="dummy2" required>
+        </div>
+        <button type="submit">Register</button>
+    </form>
+</body>
+</html>

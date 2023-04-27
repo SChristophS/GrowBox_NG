@@ -14,7 +14,8 @@ const Temperature = () => {
   };
 
   const handleAddTemperatureCycle = () => {
-    setTemperatureSettings([...temperatureSettings, { temperature1: 0, duration1: 0, temperature2: 0, duration2: 0 }]);
+    // Remove temperature2 and duration2 from the new cycle
+    setTemperatureSettings([...temperatureSettings, { temperature1: 0, duration1: 0 }]);
   };
 
   const handleDeleteTemperatureCycle = (index) => {
