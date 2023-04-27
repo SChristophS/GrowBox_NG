@@ -1,0 +1,4 @@
+change temperature:
+Bitte ändere die temperatur Cycles eingabe.
+Ich benötige lediglich temperature1 und duration1
+es ist nicht nötig dass eine weitere temperatur eingegeben werden kann

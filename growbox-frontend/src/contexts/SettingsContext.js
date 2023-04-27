@@ -1,4 +1,4 @@
-import React, { createContext, useState } from 'react';
+import React, { createContext, useState, useEffect } from 'react';
 
 export const SettingsContext = createContext();
 
@@ -6,6 +6,10 @@ const SettingsContextProvider = (props) => {
   const [ledSettings, setLedSettings] = useState([]);
   const [temperatureSettings, setTemperatureSettings] = useState([]);
   const [wateringSettings, setWateringSettings] = useState([]);
+  const [growCycleName, setGrowCycleName] = useState('');
+  const [description, setDescription] = useState('');
+  const [sharingStatus, setSharingStatus] = useState('public');
+  const [totalGrowTime, setTotalGrowTime] = useState(null);
 
   const saveSettings = () => {
     const settings = {
@@ -28,6 +32,10 @@ const SettingsContextProvider = (props) => {
     }
   };
 
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -39,6 +47,14 @@ const SettingsContextProvider = (props) => {
         setWateringSettings,
         saveSettings,
         loadSettings,
+        growCycleName,
+        setGrowCycleName,
+        description,
+        setDescription,
+        sharingStatus,
+        setSharingStatus,
+        totalGrowTime,
+        setTotalGrowTime
       }}
     >
       {props.children}
