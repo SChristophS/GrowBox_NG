@@ -1,7 +1,9 @@
 import React, { useContext, useState, useEffect } from "react";
 import { Container, Table, Form, Row, Col } from "react-bootstrap";
 import { AuthContext } from "../contexts/AuthContext";
-
+import { SettingsContext } from "../contexts/SettingsContext";
+import RingComponent from "./RingComponent";
+import { Button } from "react-bootstrap";
 
 const Load = () => {
   const { username } = useContext(AuthContext);
@@ -9,8 +11,132 @@ const Load = () => {
   const [filteredGrowPlans, setFilteredGrowPlans] = useState([]);
   const [showOnlyOwn, setShowOnlyOwn] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipData, setTooltipData] = useState(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [loadStatus, setLoadStatus] = useState("");
 
-  useEffect(() => {
+  const {
+    updateLedSettings,
+    setTemperatureSettings,
+    setWateringSettings,
+    setGrowCycleName,
+    setDescription,
+    setSharingStatus,
+    setTotalGrowTime
+  } = useContext(SettingsContext);
+  
+
+  const { ledSettings } = useContext(SettingsContext);
+
+  const loadGrowPlan = (plan) => {
+    const loadedLedSettings = plan.growData.ledCycles;
+    const loadedTemperatureSettings = plan.growData.tempCycles;
+    const loadedWateringSettings = plan.growData.wateringCycles;
+    setLoadStatus(`Grow-Plan '${plan.growCycleName}' erfolgreich geladen.`);
+
+    updateLedSettings(loadedLedSettings);
+    setTemperatureSettings(loadedTemperatureSettings);
+    setWateringSettings(loadedWateringSettings);
+    setGrowCycleName(plan.growCycleName);
+    setDescription(plan.description);
+    setSharingStatus(plan.sharingStatus);
+    setTotalGrowTime(plan.growData.totalGrowTime);
+  };
+  
+  
+
+  const deleteGrowPlan = async (plan) => {
+    const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
+    if (confirmDelete) {
+      try {
+        const response = await fetch("http://localhost:5000/delete-grow-plan", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            username: username,
+            growCycleName: plan.growCycleName,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          alert(data.message);
+          getGrowPlans();
+        } else {
+          const data = await response.json();
+          alert(data.message);
+        }
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+  };
+
+  const [checkPassed, setCheckPassed] = useState(false);
+
+  const checkGrowData = (data) => {
+    console.log("checkGrowData")
+    console.log(data)
+
+    // read the totalGrowTime
+    let totalGrowTime = data.growData.totalGrowTime;
+    console.log("totalGrowTime = " + totalGrowTime);
+
+    // read the total LED Cycle times
+    let totalLedTime = 0;
+    let combinedDurationTimeLED = 0;
+    let repetitions_LED = 0;
+
+    for (let i = 0; i < data.growData.ledCycles.length; i++) {
+      combinedDurationTimeLED = data.growData.ledCycles[i].durationOff + data.growData.ledCycles[i].durationOn;
+      repetitions_LED = data.growData.ledCycles[i].ledRepetitions;
+
+      totalLedTime = totalLedTime + (combinedDurationTimeLED * repetitions_LED)
+    }
+    console.log("calculated LED time = " + totalLedTime)
+   
+    // read the total Water Cycle times
+    let totalWaterTime = 0;
+    let combinedDurationTime_water = 0;
+    let repetitionsWater = 0;
+    for (let i = 0; i < data.growData.wateringCycles.length; i++) {
+      combinedDurationTime_water = data.growData.wateringCycles[i].duration1 + data.growData.wateringCycles[i].duration2;
+      repetitionsWater = data.growData.wateringCycles[i].waterRepetitions;
+
+      totalWaterTime = totalWaterTime + (combinedDurationTime_water * repetitionsWater)
+    }
+    console.log("calculated Water time = " + totalWaterTime)    
+
+    // read the total Temperature Cycle times
+    let totalTemperatureTime = 0;
+    let repetitionsTemperature = 0;
+    for (let i = 0; i < data.growData.tempCycles.length; i++) {
+      totalTemperatureTime = totalTemperatureTime + data.growData.tempCycles[i].duration1;
+    }
+    console.log("calculated Temperature time = " + totalTemperatureTime) 
+
+
+    return true;
+    
+  };
+
+
+  const handleMouseEnter = (event, growPlan) => {
+    setTooltipData(growPlan);
+    console.log(growPlan)
+    setTooltipPosition({ x: event.clientX, y: event.clientY });
+    setShowTooltip(true);
+    setCheckPassed(checkGrowData(growPlan));
+  };
+
+  const handleMouseLeave = () => {
+    setShowTooltip(false);
+  };
+
+  const getGrowPlans = () => {
     fetch(`http://localhost:5000/get-grow-plans/${username}`, {
       method: "GET",
       credentials: "include",
@@ -29,6 +155,10 @@ const Load = () => {
         console.error("Error:", error);
         setStatusMessage("Fehler beim Laden der Grow-Pläne.");
       });
+  };
+
+  useEffect(() => {
+    getGrowPlans();
   }, []);
 
   useEffect(() => {
@@ -53,6 +183,8 @@ const Load = () => {
             />
           </Form.Group>
         </Col>
+        <p>{statusMessage}</p>
+        <p>{loadStatus}</p>
       </Row>
       <Table striped bordered hover size="sm">
         <thead>
@@ -60,22 +192,68 @@ const Load = () => {
             <th>Benutzername</th>
             <th>Growname</th>
             <th>Beschreibung</th>
+            <th>Sharing Status</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          {filteredGrowPlans.map((plan) => (
-            <tr key={`${plan.username}-${plan.growCycleName}`}>
+        {(filteredGrowPlans || []).map((plan) => (
+
+            <tr
+              key={`${plan.username}-${plan.growCycleName}`}
+              onMouseEnter={(e) => handleMouseEnter(e, plan)}
+              onMouseLeave={handleMouseLeave}
+            >
               <td>{plan.username}</td>
               <td>{plan.growCycleName}</td>
               <td>{plan.description}</td>
+              <td>{plan.sharingStatus ? "Geteilt" : "Privat"}</td>
+              <td>
+                <button onClick={() => loadGrowPlan(plan)}>
+                  Grow laden
+                </button>
+              </td>
+              <td>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => deleteGrowPlan(plan)}
+              >
+                Löschen
+              </Button>
+            </td>
             </tr>
           ))}
         </tbody>
       </Table>
-      <p>{statusMessage}</p>
+      {showTooltip && (
+        <div
+        style={{
+          position: "fixed",
+          top: tooltipPosition.y,
+          left: tooltipPosition.x,
+          background: "white",
+          border: "1px solid black",
+          padding: "10px",
+        }}
+      >
+        {checkPassed && <RingComponent growData={tooltipData.growData} />}
+        <p><strong>Growname:</strong> {tooltipData.growCycleName}</p>
+        <p><strong>Beschreibung:</strong> {tooltipData.description}</p>
+        <p>
+          <strong>Check:</strong>{" "}
+          {checkPassed ? (
+            <span style={{ color: "green" }}>passed</span>
+          ) : (
+            <span style={{ color: "red" }}>failed</span>
+          )}
+        </p>
+        
+        
+      </div>
+      )}
     </Container>
   );
 };
-
 
 export default Load;

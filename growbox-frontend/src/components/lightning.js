@@ -5,7 +5,7 @@ import CycleInput from './CycleInput';
 import { SettingsContext } from '../contexts/SettingsContext';
 
 const Lightning = () => {
-  const { ledSettings, setLedSettings } = useContext(SettingsContext);
+  const { ledSettings, setLedSettings, totalGrowTime } = useContext(SettingsContext);
 
   const handleLightCycleChange = (index, cycleType, name, value) => {
     const newLedCycles = [...ledSettings];
@@ -22,9 +22,18 @@ const Lightning = () => {
     setLedSettings(newLedCycles);
   };
 
+  const totalLedDuration = ledSettings.reduce((acc, cycle) => {
+    return acc + (cycle.durationOn + cycle.durationOff) * cycle.ledRepetitions;
+  }, 0);
+
   return (
     <Container>
       <h2>Light Cycles</h2>
+      <p>
+        Total Grow Time:{' '}
+        {totalGrowTime !== undefined ? `${totalGrowTime} Minuten` : 'Noch keine Gesamtdauer festgelegt'}
+      </p>
+      <p>Aktuelle Gesamtdauer LED Zyklen: {totalLedDuration} Minuten</p>
       {ledSettings.map((lightCycle, index) => (
         <CycleInput
           key={index}
@@ -33,6 +42,7 @@ const Lightning = () => {
           cycle={lightCycle}
           onChange={handleLightCycleChange}
           onDelete={handleDeleteLightCycle}
+          showDuration
         />
       ))}
       <Row className="justify-content-center">
