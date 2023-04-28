@@ -1,7 +1,7 @@
 import React from 'react';
 
 const Startseite = () => {
-  return <div>Test</div>;
+  return <div>Kann ich erst machen wenn die Box Daten erzeugt</div>;
 };
 
 export default Startseite;

@@ -1,0 +1,38 @@
+{
+    "_id": {
+      "$oid": "644b72c8ddcbbad7e95d7107"
+    },
+    "username": "christoph",
+    "growCycleName": "Nachbau",
+    "description": "HierderNachbau",
+    "sharingStatus": "public",
+    "growData": {
+      "totalGrowTime": 1440,
+      "ledCycles": [
+        {
+          "durationOn": 120,
+          "durationOff": 120,
+          "ledRepetitions": 12
+        }
+      ],
+      "tempCycles": [
+        {
+          "temperature1": 50,
+          "duration1": 1000
+        },
+        {
+        "temperature1": 23,
+        "duration1": 440
+        }
+      ],
+      "wateringCycles": [
+        {
+          "status1": "full",
+          "duration1": 10,
+          "status2": "empty",
+          "duration2": 110,
+          "waterRepetitions": 12
+        }
+      ]
+    }
+  }

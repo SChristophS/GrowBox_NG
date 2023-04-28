@@ -1,17 +1,56 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, Button, Col, Form, Row, InputGroup } from 'react-bootstrap';
 
-const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete }) => {
+const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete, showDuration }) => {
   const handleChange = (name, value) => {
     onChange(cycleIndex, cycleType, name, value);
   };
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const calculateDuration = (cycle) => {
+    if (cycleType === 'led') {
+      return (cycle.durationOn + cycle.durationOff) * cycle.ledRepetitions;
+    }
+    else if (cycleType === 'water') {
+      return (cycle.duration1 + cycle.duration2) * cycle.waterRepetitions;
+    }
+    else if (cycleType === 'temperature') {
+      return cycle.duration1;
+    }
+  }
+
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
+
+
+
+
 
   return (
     <Card className="my-3">
       <Card.Header>
         <strong>{cycleType.toUpperCase()} Cycle {cycleIndex + 1}</strong>
+
+        {showDuration && (
+          <span>
+            Dauer dieses Zyklus: {calculateDuration(cycle)} Minuten
+          </span>
+        )}
+
+      <Button onClick={toggleCollapse} className="float-end">
+        {isCollapsed ? "Expand" : "Collapse"}
+      </Button>
+
       </Card.Header>
-      <Card.Body>
+      <Card.Body style={{ display: isCollapsed ? "none" : "block" }}>
+        {showDuration && (
+          <p>
+            Dauer dieses Zyklus: {calculateDuration(cycle)}{' '}
+            {cycleType === 'led' ? 'Minuten' : ''}
+          </p>
+        )}
         {Object.entries(cycle).map(([name, value], index) => {
           // Skip rendering temperature2 and duration2 if cycleType is temperature
           if (cycleType === 'temperature' && (name === 'temperature2' || name === 'duration2')) {

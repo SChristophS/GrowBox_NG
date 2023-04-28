@@ -4,7 +4,16 @@ export const SettingsContext = createContext();
 
 const SettingsContextProvider = (props) => {
   const [ledSettings, setLedSettings] = useState([]);
-  const [temperatureSettings, setTemperatureSettings] = useState([]);
+  
+  const updateLedSettings = (newSettings) => {
+    setLedSettings(newSettings);
+    saveSettings();
+  };
+  
+  const [temperatureSettings, setTemperatureSettings] = useState([
+    { temperature1: 0, duration1: 0 },
+  ]);
+  
   const [wateringSettings, setWateringSettings] = useState([]);
   const [growCycleName, setGrowCycleName] = useState('');
   const [description, setDescription] = useState('');
@@ -16,10 +25,15 @@ const SettingsContextProvider = (props) => {
       ledSettings,
       temperatureSettings,
       wateringSettings,
+      growCycleName,
+      description,
+      sharingStatus,
+      totalGrowTime,
     };
     localStorage.setItem('settings', JSON.stringify(settings));
     console.log('Settings saved');
   };
+  
 
   const loadSettings = () => {
     const storedSettings = localStorage.getItem('settings');
@@ -28,9 +42,14 @@ const SettingsContextProvider = (props) => {
       setLedSettings(settings.ledSettings);
       setTemperatureSettings(settings.temperatureSettings);
       setWateringSettings(settings.wateringSettings);
+      setGrowCycleName(settings.growCycleName);
+      setDescription(settings.description);
+      setSharingStatus(settings.sharingStatus);
+      setTotalGrowTime(settings.totalGrowTime);
       console.log('Settings loaded');
     }
   };
+  
 
   useEffect(() => {
     loadSettings();
@@ -41,6 +60,8 @@ const SettingsContextProvider = (props) => {
       value={{
         ledSettings,
         setLedSettings,
+        setLedSettings,
+        updateLedSettings,
         temperatureSettings,
         setTemperatureSettings,
         wateringSettings,

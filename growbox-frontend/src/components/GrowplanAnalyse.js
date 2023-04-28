@@ -1,14 +1,27 @@
-import React from 'react';
-import RadialBarChart from './RadialBarChart';
-import prepareLedData from './prepareLedData';
+import React, { useContext } from 'react';
+import { SettingsContext } from "../contexts/SettingsContext";
+import RingComponent from "./RingComponent";
 
 const GrowplanAnalyse = () => {
-  const data = prepareLedData();
+  const { ledSettings, wateringSettings, temperatureSettings } = useContext(SettingsContext);
+
+  let totalGrowTime = 0;
+  for (const ledCycle of ledSettings) {
+    const { durationOn, durationOff, ledRepetitions } = ledCycle;
+    totalGrowTime += (durationOn + durationOff) * ledRepetitions;
+  }
+
+  const growData = {
+    totalGrowTime,
+    ledCycles: ledSettings,
+    wateringCycles: wateringSettings,
+    tempCycles: temperatureSettings,
+  };
 
   return (
     <div>
-      <h2>Grow Plan Analyse3</h2>
-      <RadialBarChart data={data} />
+      <h2>Grow Plan Analyse</h2>
+      <RingComponent growData={growData} />
     </div>
   );
 };
