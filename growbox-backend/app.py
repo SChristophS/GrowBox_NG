@@ -53,13 +53,30 @@ def save_grow_plan():
     return jsonify({"message": "Grow plan saved successfully."}), 200
 
 
+@app.route("/delete-grow-plan", methods=["DELETE"])
+def delete_grow_plan():
+    data = request.get_json()
+    username = data["username"]
+    growCycleName = data["growCycleName"]
 
+    result = db[app.config["DATABASE_NAME_GROW_PLANS"]].delete_one({"username": username, "growCycleName": growCycleName})
+
+    if result.deleted_count > 0:
+        return jsonify({"message": "Grow plan deleted successfully."}), 200
+    else:
+        return jsonify({"message": "Unable to delete the grow plan. Grow plan not found."}), 400
 
 
 @app.route("/get-grow-plans/<username>", methods=["GET"])
 def get_grow_plans(username):
     try:
-        grow_plans = list(db[app.config["DATABASE_NAME_GROW_PLANS"]].find({"username": username}))
+        user_grow_plans = list(db[app.config["DATABASE_NAME_GROW_PLANS"]].find({"username": username}))
+        public_grow_plans = list(
+            db[app.config["DATABASE_NAME_GROW_PLANS"]].find({"sharingStatus": "public", "username": {"$ne": username}}))
+
+        grow_plans = user_grow_plans + public_grow_plans
+        print(public_grow_plans)
+
         for plan in grow_plans:
             plan["_id"] = str(plan["_id"])
         return jsonify({"status": "success", "data": grow_plans}), 200
