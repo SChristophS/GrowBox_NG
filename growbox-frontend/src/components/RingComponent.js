@@ -1,8 +1,9 @@
 import React from 'react';
 
 const RingComponent = ({ growData }) => {
-  console.log(growData);
   const { totalGrowTime, ledCycles, wateringCycles, tempCycles } = growData;
+
+  
 
 
   const radius1 = 100;
@@ -18,6 +19,26 @@ const RingComponent = ({ growData }) => {
   const ledSegments = [];
   const waterSegments = [];
   const tempSegments = [];
+
+  const GrowDuration = [];
+  const totalGrowTimeInHours = totalGrowTime/60;
+
+  if (totalGrowTimeInHours == 1){
+    GrowDuration.push(
+      <text x="50%" y="50%" textAnchor="middle" dy=".3em" fontSize="14">{totalGrowTimeInHours} Stunde</text>
+    );
+  } else {
+    GrowDuration.push(
+      <text x="50%" y="50%" textAnchor="middle" dy=".3em" fontSize="14">{totalGrowTimeInHours} Stunden</text>
+    );
+  }
+
+  
+
+
+
+  
+
 
 // Berechnung der Wasserzyklen
 let cumulativeWaterDuration = 0;
@@ -86,7 +107,6 @@ for (let j = 0; j < ledCycles.length; j++) {
   cumulativeLedDuration += ledRepetitions * (durationOn + durationOff);
 }
 
-  
 
  // Berechnung der Temperaturzyklen
 let cumulativeDuration = 0;
@@ -121,6 +141,7 @@ for (let i = 0; i < tempCycles.length; i++) {
       {ledSegments}
       {waterSegments}
       {tempSegments}
+      {GrowDuration} 
     </svg>
   );
 };

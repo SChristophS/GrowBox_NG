@@ -25,7 +25,6 @@ const Load = () => {
     setSharingStatus,
     setTotalGrowTime
   } = useContext(SettingsContext);
-  
 
   const { ledSettings } = useContext(SettingsContext);
 
@@ -43,8 +42,6 @@ const Load = () => {
     setSharingStatus(plan.sharingStatus);
     setTotalGrowTime(plan.growData.totalGrowTime);
   };
-  
-  
 
   const deleteGrowPlan = async (plan) => {
     const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
@@ -78,12 +75,8 @@ const Load = () => {
   const [checkPassed, setCheckPassed] = useState(false);
 
   const checkGrowData = (data) => {
-    console.log("checkGrowData")
-    console.log(data)
-
     // read the totalGrowTime
     let totalGrowTime = data.growData.totalGrowTime;
-    console.log("totalGrowTime = " + totalGrowTime);
 
     // read the total LED Cycle times
     let totalLedTime = 0;
@@ -94,10 +87,9 @@ const Load = () => {
       combinedDurationTimeLED = data.growData.ledCycles[i].durationOff + data.growData.ledCycles[i].durationOn;
       repetitions_LED = data.growData.ledCycles[i].ledRepetitions;
 
-      totalLedTime = totalLedTime + (combinedDurationTimeLED * repetitions_LED)
+      totalLedTime = totalLedTime + (combinedDurationTimeLED * repetitions_LED);
     }
-    console.log("calculated LED time = " + totalLedTime)
-   
+
     // read the total Water Cycle times
     let totalWaterTime = 0;
     let combinedDurationTime_water = 0;
@@ -106,9 +98,8 @@ const Load = () => {
       combinedDurationTime_water = data.growData.wateringCycles[i].duration1 + data.growData.wateringCycles[i].duration2;
       repetitionsWater = data.growData.wateringCycles[i].waterRepetitions;
 
-      totalWaterTime = totalWaterTime + (combinedDurationTime_water * repetitionsWater)
+      totalWaterTime = totalWaterTime + (combinedDurationTime_water * repetitionsWater);
     }
-    console.log("calculated Water time = " + totalWaterTime)    
 
     // read the total Temperature Cycle times
     let totalTemperatureTime = 0;
@@ -116,25 +107,25 @@ const Load = () => {
     for (let i = 0; i < data.growData.tempCycles.length; i++) {
       totalTemperatureTime = totalTemperatureTime + data.growData.tempCycles[i].duration1;
     }
-    console.log("calculated Temperature time = " + totalTemperatureTime) 
 
-
-    return true;
-    
+    if (totalGrowTime === totalLedTime && totalGrowTime === totalWaterTime && totalGrowTime === totalTemperatureTime) {
+      return true;
+    } else {
+      return false;
+    }
   };
-
 
   const handleMouseEnter = (event, growPlan) => {
     setTooltipData(growPlan);
-    console.log(growPlan)
-    setTooltipPosition({ x: event.clientX, y: event.clientY });
-    setShowTooltip(true);
+    setTooltipPosition({ x: event.clientX + 10, y: event.clientY + 10 });
+    setTimeout(() => setShowTooltip(true), 500); // Verzögerung hinzufügen
     setCheckPassed(checkGrowData(growPlan));
   };
 
   const handleMouseLeave = () => {
     setShowTooltip(false);
   };
+
 
   const getGrowPlans = () => {
     fetch(`http://localhost:5000/get-grow-plans/${username}`, {
@@ -228,29 +219,30 @@ const Load = () => {
       </Table>
       {showTooltip && (
         <div
-        style={{
-          position: "fixed",
-          top: tooltipPosition.y,
-          left: tooltipPosition.x,
-          background: "white",
-          border: "1px solid black",
-          padding: "10px",
-        }}
-      >
-        {checkPassed && <RingComponent growData={tooltipData.growData} />}
-        <p><strong>Growname:</strong> {tooltipData.growCycleName}</p>
-        <p><strong>Beschreibung:</strong> {tooltipData.description}</p>
-        <p>
-          <strong>Check:</strong>{" "}
-          {checkPassed ? (
-            <span style={{ color: "green" }}>passed</span>
-          ) : (
-            <span style={{ color: "red" }}>failed</span>
-          )}
-        </p>
-        
-        
-      </div>
+          style={{
+            position: "fixed",
+            top: tooltipPosition.y,
+            left: tooltipPosition.x,
+            background: "white",
+            border: "1px solid black",
+            boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+            padding: "10px",
+            borderRadius: "4px",
+            zIndex: 10,
+          }}
+        >
+          {checkPassed && <RingComponent growData={tooltipData.growData} />}
+          <p><strong>Growname:</strong> {tooltipData.growCycleName}</p>
+          <p><strong>Beschreibung:</strong> {tooltipData.description}</p>
+          <p>
+            <strong>Check:</strong>{" "}
+            {checkPassed ? (
+              <span style={{ color: "green" }}>Der Growplan hat den Test bestanden. Die Gesamtzeiten für LED-, Wasser- und Temperaturzyklen entsprechen der totalen Wachstumszeit.</span>
+            ) : (
+              <span style={{ color: "red" }}>Der Growplan hat den Test nicht bestanden. Die Gesamtzeiten für LED-, Wasser- und Temperaturzyklen stimmen nicht mit der totalen Wachstumszeit überein.</span>
+            )}
+          </p>
+        </div>
       )}
     </Container>
   );
