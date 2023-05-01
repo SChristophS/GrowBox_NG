@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Card, Button, Col, Form, Row, InputGroup } from 'react-bootstrap';
 
+
 const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete, showDuration }) => {
   const handleChange = (name, value) => {
     onChange(cycleIndex, cycleType, name, value);
@@ -30,27 +31,37 @@ const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete, showDura
 
   return (
     <Card className="my-3">
-      <Card.Header>
-        <strong>{cycleType.toUpperCase()} Cycle {cycleIndex + 1}</strong>
-
-        {showDuration && (
-          <span>
-            Dauer dieses Zyklus: {calculateDuration(cycle)} Minuten
-          </span>
-        )}
-
-      <Button onClick={toggleCollapse} className="float-end">
+    <Card.Header>
+  <Row className="align-items-center">
+    <Col xs={5}>
+      <strong>{cycleType.toUpperCase()} Cycle {cycleIndex + 1}</strong>
+    </Col>
+    <Col xs={4} className="text-end">
+      {showDuration && (
+        <p className="duration-display mb-0">
+          Dauer dieses Zyklus: {calculateDuration(cycle)} Minuten
+        </p>
+      )}
+    </Col>
+    <Col xs={3} className="text-end">
+      <Button 
+        onClick={toggleCollapse} 
+        className="me-2">
         {isCollapsed ? "Expand" : "Collapse"}
       </Button>
+      <Button
+        variant="danger"
+        size="sm"
+        onClick={() => onDelete(cycleIndex)}
+      >
+        Delete {cycleType} Cycle
+      </Button>
+    </Col>
+  </Row>
+</Card.Header>
 
-      </Card.Header>
       <Card.Body style={{ display: isCollapsed ? "none" : "block" }}>
-        {showDuration && (
-          <p>
-            Dauer dieses Zyklus: {calculateDuration(cycle)}{' '}
-            {cycleType === 'led' ? 'Minuten' : ''}
-          </p>
-        )}
+
         {Object.entries(cycle).map(([name, value], index) => {
           // Skip rendering temperature2 and duration2 if cycleType is temperature
           if (cycleType === 'temperature' && (name === 'temperature2' || name === 'duration2')) {
@@ -88,9 +99,6 @@ const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete, showDura
             </Form.Group>
           );
         })}
-        <Button variant="danger" onClick={() => onDelete(cycleIndex)}>
-          Delete {cycleType} Cycle
-        </Button>
       </Card.Body>
     </Card>
   );

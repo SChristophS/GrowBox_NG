@@ -15,6 +15,7 @@ import Save from './components/Save';
 import Login from './components/Login';
 import GrowplanAnalyse from './components/GrowplanAnalyse';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import './App.css';
 
 const App = () => {
   return (

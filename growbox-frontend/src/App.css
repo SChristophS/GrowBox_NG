@@ -23,6 +23,42 @@
   }
 }
 
-.float-end {
-  float: right;
+.duration-display {
+  margin-left: auto;
 }
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background-color: #f0f2f5;
+}
+
+h2 {
+  margin-bottom: 1.5rem;
+}
+
+button {
+  font-weight: 700;
+  height: 40px;
+}
+
+.button-height {
+   /* Adjust this value to set the desired height */
+}
+
+.container {
+  background-color: white;
+  padding: 1.5rem 2rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.section-spacing {
+  margin-bottom: 2rem;
+}
+
+.custom-h3 {
+  font-size: 1.5rem;
+}
+
+

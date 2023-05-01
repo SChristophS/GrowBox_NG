@@ -19,7 +19,6 @@ const Login = () => {
         username: username,
         password: password,
       });
-      console.log(response.data);
       if (response.data.message === "Login successful!") {
         setIsLoggedIn(true);
         setAuthUsername(username);
