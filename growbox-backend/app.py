@@ -3,9 +3,11 @@ from pymongo import MongoClient
 from flask_bcrypt import Bcrypt
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, session, send_from_directory
 from urllib.parse import parse_qs
-
-# Importiere den Passwort-Hasher und den Passwort-Verifier
 from werkzeug.security import generate_password_hash, check_password_hash
+import paho.mqtt.client as mqtt
+import time
+import threading
+
 
 app = Flask(__name__, template_folder="templates")
 
@@ -18,14 +20,103 @@ app.config["CORS_HEADERS"] = "Content-Type"
 app.config["DATABASE_NAME"] = "your_database_name"
 app.config["DATABASE_NAME_USER"] = "users"
 app.config["DATABASE_NAME_GROW_PLANS"] = "grow_plans"
+app.config["DEVICES"] = "devices"
 
 bcrypt = Bcrypt(app)
 
 # Verbindung zur MongoDB
+#client = MongoClient("mongodb://192.168.178.25:49186/")
 client = MongoClient("mongodb://192.168.178.25:49155/")
 db = client[app.config["DATABASE_NAME"]]
 users = db["users"]
 
+mqtt_username = "christoph"
+mqtt_password = "Aprikose99"
+
+           
+
+# MQTT client
+mqtt_client = mqtt.Client()
+mqtt_client.username_pw_set(mqtt_username, mqtt_password)
+
+
+connected_devices = {}
+device_timers = {}
+
+def mark_device_as_disconnected(device_id):
+    if device_id in connected_devices:
+        del connected_devices[device_id]
+        print(f"Device {device_id} is now disconnected.")
+
+
+def send_alive_messages():
+    while True:
+        mqtt_client.publish("growbox/alive", "I am alive")
+        time.sleep(5)
+        
+def on_disconnect(client, userdata, rc):
+    print("Disconnected with result code "+str(rc))
+    device_id = userdata
+    if device_id in connected_devices:
+        del connected_devices[device_id]
+        print(f"Device {device_id} is now disconnected.")
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("Connected successfully.")
+    else:
+        print(f"Connection failed with error code {rc}")
+        
+    client.subscribe("growbox/connected")
+    client.subscribe("growbox/disconnected")
+    client.subscribe("growbox/status")
+
+def on_message(client, userdata, msg):
+    print(f"{msg.topic} {str(msg.payload)}")
+    device_id = msg.payload.decode()
+    print(f"device_id:{device_id}")
+
+    if msg.topic == "growbox/status":
+        print(f"message.topic is status")
+        # Query the database to get the owner of the device
+        #device = db["devices"].find_one({"device_id": device_id})
+
+        device = db[app.config["DEVICES"]].find_one({"device_id": device_id})
+        print(device)
+        if device:
+            username = device["username"]
+            if device_id in connected_devices:
+                # Device is already in the dictionary, just print a status message
+                print(f"Device {device_id} owned by {username} is already connected.")
+            else:
+                # Device is not in the dictionary, add it
+                connected_devices[device_id] = username
+                print(f"Device {device_id} owned by {username} is now connected.")
+            
+            print(connected_devices)
+        else:
+            print(f"Device {device_id} is now connected, but no owner found in the database.")
+
+        # Start or restart the timer for this device
+        if device_id in device_timers:
+            device_timers[device_id].cancel()
+        device_timers[device_id] = threading.Timer(10.0, mark_device_as_disconnected, args=[device_id])
+        device_timers[device_id].start()
+
+
+
+    
+
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+mqtt_client.on_disconnect = on_disconnect
+
+connection_result = mqtt_client.connect("192.168.178.25", 49154, 60)
+if connection_result == 0:
+    print("Connected to MQTT broker successfully.")
+else:
+    print(f"Failed to connect to MQTT broker. Error code: {connection_result}")
+    
 @app.route("/save-grow-plan", methods=["POST"])
 def save_grow_plan():
     data = request.get_json()
@@ -34,7 +125,6 @@ def save_grow_plan():
     username = data["username"]
     growCycleName = data["growCycleName"]
     overwrite = data["overwrite"]
-    #del data["username"]
     del data["overwrite"]
 
     existing_plan = db[app.config["DATABASE_NAME_GROW_PLANS"]].find_one({"username": username, "growCycleName": growCycleName})
@@ -52,7 +142,6 @@ def save_grow_plan():
 
     return jsonify({"message": "Grow plan saved successfully."}), 200
 
-
 @app.route("/delete-grow-plan", methods=["DELETE"])
 def delete_grow_plan():
     data = request.get_json()
@@ -65,7 +154,6 @@ def delete_grow_plan():
         return jsonify({"message": "Grow plan deleted successfully."}), 200
     else:
         return jsonify({"message": "Unable to delete the grow plan. Grow plan not found."}), 400
-
 
 @app.route("/get-grow-plans/<username>", methods=["GET"])
 def get_grow_plans(username):
@@ -83,7 +171,6 @@ def get_grow_plans(username):
     except Exception as e:
         print(e)
         return jsonify({"status": "error", "message": "Unable to fetch grow plans."}), 500
-
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -105,8 +192,9 @@ def register():
     else:
         return render_template("register.html")
 
-
-
+@app.route("/")
+def index():
+    return render_template("index.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -117,7 +205,6 @@ def login():
         user = db["users"].find_one({"username": username})
 
         if user and check_password_hash(user["password"], password):
-            # Set the user ID in the session
             session["user_id"] = str(user["_id"])
             flash("Login successful!")
             return jsonify({"message": "Login successful!"})
@@ -126,17 +213,33 @@ def login():
 
     return render_template("login.html")
 
+@app.route('/devices', methods=['GET'])
+def get_devices():
+    print(f"/devices is called with {request}")
+    username = request.args.get('username')
+    print(f"/devices is called with username {username}")
+    if not username:
+        return {"error": "Username is required"}, 400
+
+    #devices = db.devices.find({"username": username})
+    devices = list(db[app.config["DEVICES"]].find({"username": username}))
+    print(f"return from Database for devices: {devices}")
+    result = []
+    for device in devices:
+        device_id = device['device_id']
+        status = 'connected' if device_id in connected_devices else 'disconnected'
+        result.append({
+            'device_id': device_id,
+            'status': status
+        })
+
+    return {"devices": result}, 200
 
 
 if __name__ == "__main__":
-    # Beispiel-Datensätze für Benutzer "user1"
-    #db["user1"].insert_one({"user_id": "user1", "temperature": 25.0, "humidity": 60.0})
-    #db["user1"].insert_one({"user_id": "user1", "temperature": 24.5, "humidity": 62.0})
-    #db["user1"].insert_one({"user_id": "user1", "temperature": 23.0, "humidity": 65.0})
 
-    # Beispiel-Datensätze für Benutzer "user2"
-    #db["user2"].insert_one({"user_id": "user2", "light_intensity": 5000, "water_level": 50})
-    #db["user2"].insert_one({"user_id": "user2", "light_intensity": 6000, "water_level": 40})
-    #db["user2"].insert_one({"user_id": "user2", "light_intensity": 5500, "water_level": 45})
-
-    app.run(debug=True)
+    alive_thread = threading.Thread(target=send_alive_messages)
+    alive_thread.start()
+    
+    mqtt_client.loop_start()  # start the MQTT background thread
+    app.run(host='0.0.0.0', port=5000, debug=True)
