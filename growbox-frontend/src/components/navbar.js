@@ -89,6 +89,13 @@ const NavigationBar = () => {
                 >
                   Growplan Analyse
                 </NavDropdown.Item>
+				<NavDropdown.Item
+                  as={Link}
+                  to="/growplaner/SendToGrowbox"
+                  onClick={handleClose}
+                >
+                  Send to Growbox
+                </NavDropdown.Item>
               </NavDropdown>
               <Link to="/analyse" className="nav-link" onClick={handleClose}>
                 Analyse

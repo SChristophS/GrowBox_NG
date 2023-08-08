@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Load from './components/Load';
 import Save from './components/Save';
 import Login from './components/Login';
+import SendToGrowbox from './components/SendToGrowbox';
 import GrowplanAnalyse from './components/GrowplanAnalyse';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import './App.css';
@@ -51,6 +52,7 @@ const ProtectedRoutes = () => {
       <Route path="/growplaner/load" element={<Load />} />
       <Route path="/growplaner/save" element={<Save />} />
       <Route path="/growplaner/GrowplanAnalyse" element={<GrowplanAnalyse />} />
+	  <Route path="/growplaner/SendToGrowbox" element={<SendToGrowbox />} />
       <Route path="/analyse" element={<Analyse />} />
       <Route path="/settings" element={<Settings />} />
     </Routes>
