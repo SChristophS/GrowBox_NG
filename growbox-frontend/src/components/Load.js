@@ -105,7 +105,7 @@ const Load = () => {
     let totalTemperatureTime = 0;
     let repetitionsTemperature = 0;
     for (let i = 0; i < data.growData.tempCycles.length; i++) {
-      totalTemperatureTime = totalTemperatureTime + data.growData.tempCycles[i].duration1;
+      totalTemperatureTime = totalTemperatureTime + data.growData.tempCycles[i].duration;
     }
 
     if (totalGrowTime === totalLedTime && totalGrowTime === totalWaterTime && totalGrowTime === totalTemperatureTime) {

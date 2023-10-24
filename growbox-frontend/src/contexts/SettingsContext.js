@@ -11,7 +11,7 @@ const SettingsContextProvider = (props) => {
   };
   
   const [temperatureSettings, setTemperatureSettings] = useState([
-    { temperature1: 0, duration1: 0 },
+    { temperature: 0, duration: 0 },
   ]);
   
   const [wateringSettings, setWateringSettings] = useState([]);

@@ -35,10 +35,10 @@ const testWateringDuration = totalGrowTime === totalWateringDefinedDuration;
   console.log("totalWateringFullDuration = " + totalWateringFullDuration)
   
 
-  const [minTemperature, maxTemperature] = temperatureSettings.reduce(([min, max], cycle) => [Math.min(min, cycle.temperature1), Math.max(max, cycle.temperature1)], [Infinity, -Infinity]);
+  const [minTemperature, maxTemperature] = temperatureSettings.reduce(([min, max], cycle) => [Math.min(min, cycle.temperature), Math.max(max, cycle.temperature)], [Infinity, -Infinity]);
 
   const testLightDuration = totalGrowTime === (totalLightOnDuration + ledSettings.reduce((acc, cycle) => acc + cycle.durationOff * cycle.ledRepetitions, 0));
-  const testTemperatureDuration = totalGrowTime === temperatureSettings.reduce((acc, cycle) => acc + cycle.duration1, 0);
+  const testTemperatureDuration = totalGrowTime === temperatureSettings.reduce((acc, cycle) => acc + cycle.duration, 0);
 
   console.log(growData)
   return (

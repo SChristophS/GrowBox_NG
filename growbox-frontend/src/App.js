@@ -52,7 +52,7 @@ const ProtectedRoutes = () => {
       <Route path="/growplaner/load" element={<Load />} />
       <Route path="/growplaner/save" element={<Save />} />
       <Route path="/growplaner/GrowplanAnalyse" element={<GrowplanAnalyse />} />
-	  <Route path="/growplaner/SendToGrowbox" element={<SendToGrowbox />} />
+	  <Route path="/SendToGrowbox" element={<SendToGrowbox />} />
       <Route path="/analyse" element={<Analyse />} />
       <Route path="/settings" element={<Settings />} />
     </Routes>
