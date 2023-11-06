@@ -17,12 +17,12 @@
       ],
       "tempCycles": [
         {
-          "temperature1": 50,
-          "duration1": 1000
+          "temperature": 50,
+          "duration": 1000
         },
         {
-        "temperature1": 23,
-        "duration1": 440
+        "temperature": 23,
+        "duration": 440
         }
       ],
       "wateringCycles": [

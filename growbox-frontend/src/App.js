@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import NavigationBar from './components/navbar';
 import Home from './components/home';
 import AktuellerGrow from './components/currentGrow';
@@ -19,14 +19,22 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import './App.css';
 
 const App = () => {
+  const [isGrowPlanLoaded, setIsGrowPlanLoaded] = useState(false);
+
   return (
     <SettingsContextProvider>
       <AuthProvider>
         <Router>
-          <NavigationBar />
+          <NavigationBar 
+            isGrowPlanLoaded={isGrowPlanLoaded} 
+            setIsGrowPlanLoaded={setIsGrowPlanLoaded} 
+          />
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route path="/*" element={<ProtectedRoutes />} />
+            <Route path="/*" element={<ProtectedRoutes 
+              isGrowPlanLoaded={isGrowPlanLoaded} 
+              setIsGrowPlanLoaded={setIsGrowPlanLoaded} 
+            />} />
           </Routes>
         </Router>
       </AuthProvider>
@@ -34,7 +42,7 @@ const App = () => {
   );
 };
 
-const ProtectedRoutes = () => {
+const ProtectedRoutes = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
   const { isLoggedIn } = useAuth();
 
   if (!isLoggedIn) {
@@ -49,10 +57,13 @@ const ProtectedRoutes = () => {
       <Route path="/growplaner/beleuchtung" element={<Beleuchtung />} />
       <Route path="/growplaner/bewaesserung" element={<Bewaesserung />} />
       <Route path="/growplaner/temperatur" element={<Temperatur />} />
-      <Route path="/growplaner/load" element={<Load />} />
+      <Route path="/growplaner/load" element={<Load 
+        isGrowPlanLoaded={isGrowPlanLoaded} 
+        setIsGrowPlanLoaded={setIsGrowPlanLoaded} 
+      />} />
       <Route path="/growplaner/save" element={<Save />} />
       <Route path="/growplaner/GrowplanAnalyse" element={<GrowplanAnalyse />} />
-	  <Route path="/growplaner/SendToGrowbox" element={<SendToGrowbox />} />
+      <Route path="/SendToGrowbox" element={<SendToGrowbox />} />
       <Route path="/analyse" element={<Analyse />} />
       <Route path="/settings" element={<Settings />} />
     </Routes>

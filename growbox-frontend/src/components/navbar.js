@@ -3,9 +3,10 @@ import { Navbar, Nav, NavDropdown } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
-const NavigationBar = () => {
+const NavigationBar = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
   const { isLoggedIn, setIsLoggedIn, setAuthUsername } = useAuth();
   const [expanded, setExpanded] = useState(false);
+
   const navigate = useNavigate();
 
   const handleClose = () => {
@@ -40,63 +41,74 @@ const NavigationBar = () => {
                 Aktueller Grow
               </Link>
               <NavDropdown title="Growplaner" id="growplaner-dropdown">
-                <NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/general"
-                  onClick={handleClose}
-                >
-                  General
-                </NavDropdown.Item>
-                <NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/beleuchtung"
-                  onClick={handleClose}
-                >
-                  Beleuchtung
-                </NavDropdown.Item>
-                <NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/bewaesserung"
-                  onClick={handleClose}
-                >
-                  Bewässerung
-                </NavDropdown.Item>
-                <NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/temperatur"
-                  onClick={handleClose}
-                >
-                  Temperatur
-                </NavDropdown.Item>
-                <NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/load"
-                  onClick={handleClose}
-                >
-                  Laden
-                </NavDropdown.Item>
-                <NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/save"
-                  onClick={handleClose}
-                >
-                  Speichern
-                </NavDropdown.Item>
-                <NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/GrowplanAnalyse"
-                  onClick={handleClose}
-                >
-                  Growplan Analyse
-                </NavDropdown.Item>
-				<NavDropdown.Item
-                  as={Link}
-                  to="/growplaner/SendToGrowbox"
-                  onClick={handleClose}
-                >
-                  Send to Growbox
-                </NavDropdown.Item>
+                {!isGrowPlanLoaded && (
+                  <>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/new"
+                      onClick={handleClose}
+                    >
+                      Neu
+                    </NavDropdown.Item>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/load"
+                      onClick={handleClose}
+                    >
+                      Laden
+                    </NavDropdown.Item>
+                  </>
+                )}
+                {isGrowPlanLoaded && (
+                  <>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/general"
+                      onClick={handleClose}
+                    >
+                      General
+                    </NavDropdown.Item>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/beleuchtung"
+                      onClick={handleClose}
+                    >
+                      Beleuchtung
+                    </NavDropdown.Item>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/bewaesserung"
+                      onClick={handleClose}
+                    >
+                      Bewässerung
+                    </NavDropdown.Item>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/temperatur"
+                      onClick={handleClose}
+                    >
+                      Temperatur
+                    </NavDropdown.Item>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/save"
+                      onClick={handleClose}
+                    >
+                      Speichern
+                    </NavDropdown.Item>
+                    <NavDropdown.Item
+                      as={Link}
+                      to="/growplaner/GrowplanAnalyse"
+                      onClick={handleClose}
+                    >
+                      Growplan Analyse
+                    </NavDropdown.Item>
+                  </>
+                )}
               </NavDropdown>
+              <Link to="/SendToGrowbox" className="nav-link" onClick={handleClose}>
+                Send to Growbox
+              </Link>
               <Link to="/analyse" className="nav-link" onClick={handleClose}>
                 Analyse
               </Link>

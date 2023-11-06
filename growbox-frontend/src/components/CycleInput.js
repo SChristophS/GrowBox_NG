@@ -16,7 +16,7 @@ const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete, showDura
       return (cycle.duration1 + cycle.duration2) * cycle.waterRepetitions;
     }
     else if (cycleType === 'temperature') {
-      return cycle.duration1;
+      return cycle.duration;
     }
   }
 
