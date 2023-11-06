@@ -1,7 +1,8 @@
 import React, { useContext, useState, useEffect } from "react";
-import { Container, Table, Row, Col, Button } from "react-bootstrap";
+import { Container, Table, Row, Col } from "react-bootstrap";
 import { AuthContext } from "../contexts/AuthContext";
 import { SettingsContext } from "../contexts/SettingsContext";
+import GrowplanChecks from './GrowplanChecks';
 
 const SendToGrowbox = () => {
     const { username } = useContext(AuthContext);
@@ -18,10 +19,6 @@ const SendToGrowbox = () => {
         setSharingStatus,
         setTotalGrowTime
     } = useContext(SettingsContext);
-
-    const sendToGrowbox = (plan) => {
-        // Hier können Sie den Code zum Senden des Growplans an die Growbox hinzufügen
-    };
 
     const getGrowPlans = () => {
         fetch(`http://localhost:5000/get-grow-plans/${username}`, {
@@ -62,8 +59,7 @@ const SendToGrowbox = () => {
                         <th>Benutzername</th>
                         <th>Growname</th>
                         <th>Beschreibung</th>
-                        <th>Sharing Status</th>
-                        <th></th>
+                        <th>Checks</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -72,9 +68,15 @@ const SendToGrowbox = () => {
                             <td>{plan.username}</td>
                             <td>{plan.growCycleName}</td>
                             <td>{plan.description}</td>
-                            <td>{plan.sharingStatus ? "Geteilt" : "Privat"}</td>
                             <td>
-                                <Button variant="primary" size="sm" onClick={() => sendToGrowbox(plan)}>An Growbox Senden</Button>
+                                {plan && (
+                                    <GrowplanChecks growData={{
+                                        totalGrowTime: plan.totalGrowTime,
+                                        ledCycles: plan.ledSettings,
+                                        wateringCycles: plan.wateringSettings,
+                                        tempCycles: plan.temperatureSettings
+                                    }} />
+                                )}
                             </td>
                         </tr>
                     ))}

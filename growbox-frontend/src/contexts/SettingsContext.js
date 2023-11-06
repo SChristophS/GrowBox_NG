@@ -3,6 +3,9 @@ import React, { createContext, useState, useEffect } from 'react';
 export const SettingsContext = createContext();
 
 const SettingsContextProvider = (props) => {
+  const [isGrowPlanLoaded, setIsGrowPlanLoaded] = useState(false);
+  const resetIsGrowPlanLoaded = () => setIsGrowPlanLoaded(false);
+	
   const [ledSettings, setLedSettings] = useState([]);
   
   const updateLedSettings = (newSettings) => {
@@ -75,7 +78,10 @@ const SettingsContextProvider = (props) => {
         sharingStatus,
         setSharingStatus,
         totalGrowTime,
-        setTotalGrowTime
+        setTotalGrowTime,
+        isGrowPlanLoaded,
+        setIsGrowPlanLoaded,
+        resetIsGrowPlanLoaded		
       }}
     >
       {props.children}

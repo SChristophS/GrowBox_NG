@@ -1,11 +1,10 @@
 import React, { useContext, useState, useEffect } from "react";
-import { Container, Table, Form, Row, Col } from "react-bootstrap";
+import { Container, Table, Form, Row, Col, Button } from "react-bootstrap";
 import { AuthContext } from "../contexts/AuthContext";
 import { SettingsContext } from "../contexts/SettingsContext";
 import RingComponent from "./RingComponent";
-import { Button } from "react-bootstrap";
 
-const Load = () => {
+const Load = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
   const { username } = useContext(AuthContext);
   const [growPlans, setGrowPlans] = useState([]);
   const [filteredGrowPlans, setFilteredGrowPlans] = useState([]);
@@ -26,13 +25,12 @@ const Load = () => {
     setTotalGrowTime
   } = useContext(SettingsContext);
 
-  const { ledSettings } = useContext(SettingsContext);
-
   const loadGrowPlan = (plan) => {
     const loadedLedSettings = plan.growData.ledCycles;
     const loadedTemperatureSettings = plan.growData.tempCycles;
     const loadedWateringSettings = plan.growData.wateringCycles;
     setLoadStatus(`Grow-Plan '${plan.growCycleName}' erfolgreich geladen.`);
+    setIsGrowPlanLoaded(true);
 
     updateLedSettings(loadedLedSettings);
     setTemperatureSettings(loadedTemperatureSettings);
@@ -62,6 +60,7 @@ const Load = () => {
           const data = await response.json();
           alert(data.message);
           getGrowPlans();
+          setIsGrowPlanLoaded(false);
         } else {
           const data = await response.json();
           alert(data.message);
@@ -158,7 +157,7 @@ const Load = () => {
     } else {
       setFilteredGrowPlans(growPlans);
     }
-  }, [showOnlyOwn]);
+  }, [showOnlyOwn, growPlans, username]);
 
   return (
     <Container>
@@ -174,8 +173,10 @@ const Load = () => {
             />
           </Form.Group>
         </Col>
-        <p>{statusMessage}</p>
-        <p>{loadStatus}</p>
+        <Col>
+          <p>{statusMessage}</p>
+          <p>{loadStatus}</p>
+        </Col>
       </Row>
       <Table striped bordered hover size="sm">
         <thead>
@@ -184,12 +185,11 @@ const Load = () => {
             <th>Growname</th>
             <th>Beschreibung</th>
             <th>Sharing Status</th>
-            <th></th>
+            <th>Aktionen</th>
           </tr>
         </thead>
         <tbody>
-        {(filteredGrowPlans || []).map((plan) => (
-
+          {(filteredGrowPlans || []).map((plan) => (
             <tr
               key={`${plan.username}-${plan.growCycleName}`}
               onMouseEnter={(e) => handleMouseEnter(e, plan)}
@@ -200,19 +200,14 @@ const Load = () => {
               <td>{plan.description}</td>
               <td>{plan.sharingStatus ? "Geteilt" : "Privat"}</td>
               <td>
-                <button onClick={() => loadGrowPlan(plan)}>
-                  Grow laden
-                </button>
+                <Button variant="primary" size="sm" onClick={() => loadGrowPlan(plan)}>
+                  Laden
+                </Button>
+                {' '}
+                <Button variant="danger" size="sm" onClick={() => deleteGrowPlan(plan)}>
+                  Löschen
+                </Button>
               </td>
-              <td>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => deleteGrowPlan(plan)}
-              >
-                Löschen
-              </Button>
-            </td>
             </tr>
           ))}
         </tbody>
