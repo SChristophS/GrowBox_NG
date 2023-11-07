@@ -1,11 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import { Navbar, Nav, NavDropdown } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { SettingsContext } from '../contexts/SettingsContext';
+import { FaLeaf } from 'react-icons/fa'; // Beispiel für ein Blatt-Icon
 
 const NavigationBar = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
   const { isLoggedIn, setIsLoggedIn, setAuthUsername } = useAuth();
   const [expanded, setExpanded] = useState(false);
+  const { growCycleName } = useContext(SettingsContext);
+
 
   const navigate = useNavigate();
 
@@ -61,13 +65,16 @@ const NavigationBar = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
                 )}
                 {isGrowPlanLoaded && (
                   <>
-                    <NavDropdown.Item
-                      as={Link}
-                      to="/growplaner/general"
-                      onClick={handleClose}
-                    >
-                      General
-                    </NavDropdown.Item>
+					<NavDropdown.Item 
+					  as={Link} 
+					  to="/growplaner/general" 
+					  onClick={handleClose} 
+					  style={
+						  { backgroundColor: '#e0ffe0' }
+					  }
+					>
+					  <FaLeaf /> Aktuell:{growCycleName}
+					</NavDropdown.Item>
                     <NavDropdown.Item
                       as={Link}
                       to="/growplaner/beleuchtung"
