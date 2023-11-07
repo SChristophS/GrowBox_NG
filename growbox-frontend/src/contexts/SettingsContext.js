@@ -34,11 +34,14 @@ const SettingsContextProvider = (props) => {
       totalGrowTime,
     };
     localStorage.setItem('settings', JSON.stringify(settings));
-    console.log('Settings saved');
+    console.log(settings);
+	console.log('Settings in die Anwendung geladen');
+	
   };
   
 
   const loadSettings = () => {
+	  console.log("LoadSettings aufgerufen");
     const storedSettings = localStorage.getItem('settings');
     if (storedSettings) {
       const settings = JSON.parse(storedSettings);
@@ -50,6 +53,7 @@ const SettingsContextProvider = (props) => {
       setSharingStatus(settings.sharingStatus);
       setTotalGrowTime(settings.totalGrowTime);
       console.log('Settings loaded');
+	  console.log(settings.growCycleName)
     }
   };
   
