@@ -4,7 +4,7 @@ import { AuthContext } from "../contexts/AuthContext";
 import { SettingsContext } from "../contexts/SettingsContext";
 import RingComponent from "./RingComponent";
 
-const Load = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
+const Load = () => {
   const { username } = useContext(AuthContext);
   const [growPlans, setGrowPlans] = useState([]);
   const [filteredGrowPlans, setFilteredGrowPlans] = useState([]);
@@ -22,7 +22,8 @@ const Load = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
     setGrowCycleName,
     setDescription,
     setSharingStatus,
-    setTotalGrowTime
+    setTotalGrowTime,
+    setIsGrowPlanLoaded
   } = useContext(SettingsContext);
 
   const loadGrowPlan = (plan) => {
@@ -30,6 +31,8 @@ const Load = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
     const loadedTemperatureSettings = plan.growData.tempCycles;
     const loadedWateringSettings = plan.growData.wateringCycles;
     setLoadStatus(`Grow-Plan '${plan.growCycleName}' erfolgreich geladen.`);
+		
+    // Setzen von isGrowPlanLoaded auf true, um zu signalisieren, dass ein Plan geladen wurde
     setIsGrowPlanLoaded(true);
 
     updateLedSettings(loadedLedSettings);

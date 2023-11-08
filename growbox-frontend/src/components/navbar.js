@@ -5,11 +5,27 @@ import { useAuth } from "../contexts/AuthContext";
 import { SettingsContext } from '../contexts/SettingsContext';
 import { FaLeaf } from 'react-icons/fa'; // Beispiel für ein Blatt-Icon
 
-const NavigationBar = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
+const NavigationBar = () => {
   const { isLoggedIn, setIsLoggedIn, setAuthUsername } = useAuth();
   const [expanded, setExpanded] = useState(false);
-  const { growCycleName } = useContext(SettingsContext);
+  
+  // Zugriff auf die benötigten Werte aus dem SettingsContext
+  const { 
+    growCycleName, 
+    isGrowPlanLoaded, 
+    unloadSettings 
+  } = useContext(SettingsContext);
+  
+   console.log("NavigationBar Rendering, isGrowPlanLoaded:", isGrowPlanLoaded);
 
+
+  const handleUnload = () => {
+  console.log("handleUnload gestartet");
+	  if(window.confirm("Aktuell geladene Werte entladen?")) {
+		unloadSettings();
+		console.log("unloadSettings wurde aufgerufen");
+	  }
+  };
 
   const navigate = useNavigate();
 
@@ -65,16 +81,22 @@ const NavigationBar = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
                 )}
                 {isGrowPlanLoaded && (
                   <>
-					<NavDropdown.Item 
-					  as={Link} 
-					  to="/growplaner/general" 
-					  onClick={handleClose} 
+					<NavDropdown.Header 
 					  style={
 						  { backgroundColor: '#e0ffe0' }
 					  }
 					>
 					  <FaLeaf /> Aktuell:{growCycleName}
-					</NavDropdown.Item>
+					</NavDropdown.Header>
+
+					<NavDropdown.Item 
+					  as={Link} 
+					  to="/growplaner/general" 
+					  onClick={handleClose} 
+					>
+					  Allgemein
+					</NavDropdown.Item>					
+					
                     <NavDropdown.Item
                       as={Link}
                       to="/growplaner/beleuchtung"
@@ -110,6 +132,12 @@ const NavigationBar = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
                     >
                       Growplan Analyse
                     </NavDropdown.Item>
+                    <NavDropdown.Item
+                      onClick={handleUnload}
+                    >
+                      Unload
+                    </NavDropdown.Item>					
+					
                   </>
                 )}
               </NavDropdown>
