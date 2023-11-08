@@ -4,7 +4,6 @@ export const SettingsContext = createContext();
 
 const SettingsContextProvider = (props) => {
   const [isGrowPlanLoaded, setIsGrowPlanLoaded] = useState(false);
-  const resetIsGrowPlanLoaded = () => setIsGrowPlanLoaded(false);
 	
   const [ledSettings, setLedSettings] = useState([]);
   
@@ -39,6 +38,25 @@ const SettingsContextProvider = (props) => {
 	
   };
   
+  const unloadSettings = () => {
+	  console.log("unloadSettings ausgeführt");
+		  
+	  setLedSettings([]);
+	  setTemperatureSettings([{ temperature: 0, duration: 0 }]);
+	  setWateringSettings([]);
+	  setGrowCycleName('');
+	  setDescription('');
+	  setSharingStatus('public');
+	  setTotalGrowTime(0);
+	  
+	  console.log("unloadSettings ausgeführt, vor setIsGrowPlanLoaded:", isGrowPlanLoaded);
+	  setIsGrowPlanLoaded(false);
+
+      console.log("unloadSettings ausgeführt, nach setIsGrowPlanLoaded:", isGrowPlanLoaded);
+
+  
+};
+
 
   const loadSettings = () => {
 	  console.log("LoadSettings aufgerufen");
@@ -60,6 +78,7 @@ const SettingsContextProvider = (props) => {
 
   useEffect(() => {
     loadSettings();
+	console.log("Einstellungen beim Start geladen");
   }, []);
 
   return (
@@ -85,7 +104,7 @@ const SettingsContextProvider = (props) => {
         setTotalGrowTime,
         isGrowPlanLoaded,
         setIsGrowPlanLoaded,
-        resetIsGrowPlanLoaded		
+		unloadSettings
       }}
     >
       {props.children}
