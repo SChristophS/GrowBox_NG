@@ -38,6 +38,22 @@ const SettingsContextProvider = (props) => {
 	
   };
   
+  const generateRandomNumber = () => {
+  // Erzeugt eine zufällige Nummer zwischen 100000 und 999999
+  return Math.floor(100000 + Math.random() * 900000);
+};
+
+ 
+  const createSettings = () => {
+    unloadSettings();
+	
+	const randomNumber = generateRandomNumber();
+	const growCycleName = `Growzyklus_${randomNumber}`;
+	setGrowCycleName(growCycleName);
+	setIsGrowPlanLoaded(true);
+	console.log("createSettings ausgeführt");
+  };  
+  
   const unloadSettings = () => {
 	  console.log("unloadSettings ausgeführt");
 		  
@@ -104,7 +120,8 @@ const SettingsContextProvider = (props) => {
         setTotalGrowTime,
         isGrowPlanLoaded,
         setIsGrowPlanLoaded,
-		unloadSettings
+		unloadSettings,
+		createSettings
       }}
     >
       {props.children}

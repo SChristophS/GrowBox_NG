@@ -13,7 +13,7 @@ const NavigationBar = () => {
   const { 
     growCycleName, 
     isGrowPlanLoaded, 
-    unloadSettings 
+    unloadSettings,
   } = useContext(SettingsContext);
   
    console.log("NavigationBar Rendering, isGrowPlanLoaded:", isGrowPlanLoaded);
@@ -24,6 +24,7 @@ const NavigationBar = () => {
 	  if(window.confirm("Aktuell geladene Werte entladen?")) {
 		unloadSettings();
 		console.log("unloadSettings wurde aufgerufen");
+		navigate('/home'); // Navigieren Sie zur Start
 	  }
   };
 
@@ -91,7 +92,7 @@ const NavigationBar = () => {
 
 					<NavDropdown.Item 
 					  as={Link} 
-					  to="/growplaner/general" 
+					  to="/growplaner/general_zycle" 
 					  onClick={handleClose} 
 					>
 					  Allgemein

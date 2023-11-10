@@ -5,13 +5,14 @@ import AktuellerGrow from './components/currentGrow';
 import Beleuchtung from './components/lightning';
 import Bewaesserung from './components/watering';
 import Temperatur from './components/temperature';
-import General from './components/General'
+import General_zycle from './components/General_zycle'
 import Analyse from './components/analysis';
 import Settings from './components/settings';
 import SettingsContextProvider from './contexts/SettingsContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Load from './components/Load';
 import Save from './components/Save';
+import New from './components/new';
 import Login from './components/Login';
 import SendToGrowbox from './components/SendToGrowbox';
 import GrowplanAnalyse from './components/GrowplanAnalyse';
@@ -53,7 +54,7 @@ const ProtectedRoutes = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
     <Routes>
       <Route path="/home" element={<Home />} />
       <Route path="/aktueller-grow" element={<AktuellerGrow />} />
-      <Route path="/growplaner/general" element={<General />} />
+      <Route path="/growplaner/General_zycle" element={<General_zycle />} />
       <Route path="/growplaner/beleuchtung" element={<Beleuchtung />} />
       <Route path="/growplaner/bewaesserung" element={<Bewaesserung />} />
       <Route path="/growplaner/temperatur" element={<Temperatur />} />
@@ -61,6 +62,7 @@ const ProtectedRoutes = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
         isGrowPlanLoaded={isGrowPlanLoaded} 
         setIsGrowPlanLoaded={setIsGrowPlanLoaded} 
       />} />
+	  <Route path="/growplaner/new" element={<New />} />
       <Route path="/growplaner/save" element={<Save />} />
       <Route path="/growplaner/GrowplanAnalyse" element={<GrowplanAnalyse />} />
       <Route path="/SendToGrowbox" element={<SendToGrowbox />} />
