@@ -3,7 +3,7 @@ import { Container, Form } from "react-bootstrap";
 import { SettingsContext } from "../contexts/SettingsContext";
 import { AuthContext } from '../contexts/AuthContext';
 
-const General = () => {
+const General_zycle = () => {
   const {
     growCycleName,
     setGrowCycleName,
@@ -67,4 +67,4 @@ const General = () => {
   );
 };
 
-export default General;
+export default General_zycle;
