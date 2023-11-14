@@ -20,6 +20,7 @@ app.config["CORS_HEADERS"] = "Content-Type"
 app.config["DATABASE_NAME"] = "your_database_name"
 app.config["DATABASE_NAME_USER"] = "users"
 app.config["DATABASE_NAME_GROW_PLANS"] = "grow_plans"
+app.config["DATABASE_NAME_CYCLE_PLANS"] = "cycle_plans"
 app.config["DEVICES"] = "devices"
 
 bcrypt = Bcrypt(app)
@@ -117,30 +118,39 @@ if connection_result == 0:
 else:
     print(f"Failed to connect to MQTT broker. Error code: {connection_result}")
     
-@app.route("/save-grow-plan", methods=["POST"])
-def save_grow_plan():
+from flask import jsonify, request
+from pymongo import MongoClient
+# ... (andere benötigte Imports)
+
+@app.route("/save-cycle-plan", methods=["POST"])
+def save_cycle_plan():
     data = request.get_json()
-    print("data:")
-    print(data)
+    print("Erhaltene Daten:", data)  # Zeigt die empfangenen Daten an
+
     username = data["username"]
     growCycleName = data["growCycleName"]
     overwrite = data["overwrite"]
     del data["overwrite"]
 
-    existing_plan = db[app.config["DATABASE_NAME_GROW_PLANS"]].find_one({"username": username, "growCycleName": growCycleName})
-    print(existing_plan)
-    print(username)
-    print(data["growCycleName"])
+    print(f"Benutzername: {username}, GrowCycleName: {growCycleName}, Überschreiben: {overwrite}")
+
+    existing_plan = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find_one({"username": username, "growCycleName": growCycleName})
 
     if existing_plan:
+        print("Existierender Plan gefunden:", existing_plan)
         if overwrite:
-            db[app.config["DATABASE_NAME_GROW_PLANS"]].update_one({"_id": existing_plan["_id"]}, {"$set": data})
+            result = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].update_one({"_id": existing_plan["_id"]}, {"$set": data})
+            print("Update-Ergebnis:", result.modified_count)  # Zeigt die Anzahl der geänderten Dokumente
         else:
+            print("Plan existiert bereits und Überschreiben ist nicht erlaubt.")
             return jsonify({"message": "Grow plan with this name already exists."}), 400
     else:
-        db[app.config["DATABASE_NAME_GROW_PLANS"]].insert_one(data)
+        print("Kein existierender Plan gefunden, füge neuen hinzu.")
+        result = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].insert_one(data)
+        print("Insert-Ergebnis:", result.inserted_id)  # Zeigt die ID des eingefügten Dokuments
 
     return jsonify({"message": "Grow plan saved successfully."}), 200
+
 
 @app.route("/delete-grow-plan", methods=["DELETE"])
 def delete_grow_plan():
@@ -171,6 +181,24 @@ def get_grow_plans(username):
     except Exception as e:
         print(e)
         return jsonify({"status": "error", "message": "Unable to fetch grow plans."}), 500
+        
+
+@app.route("/get-cycle-plans/<username>", methods=["GET"])
+def get_cycle_plans(username):
+    try:
+        user_cycle_plans = list(db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find({"username": username}))
+        public_cycle_plans = list(
+            db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find({"sharingStatus": "public", "username": {"$ne": username}}))
+
+        cycle_plans = user_cycle_plans + public_cycle_plans
+        print(cycle_plans)
+
+        for plan in cycle_plans:
+            plan["_id"] = str(plan["_id"])
+        return jsonify({"status": "success", "data": cycle_plans}), 200
+    except Exception as e:
+        print(e)
+        return jsonify({"status": "error", "message": "Unable to fetch cycle plans."}), 500        
 
 @app.route("/register", methods=["GET", "POST"])
 def register():

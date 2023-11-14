@@ -3,11 +3,14 @@ import { Container, Table, Form, Row, Col, Button } from "react-bootstrap";
 import { AuthContext } from "../contexts/AuthContext";
 import { SettingsContext } from "../contexts/SettingsContext";
 import RingComponent from "./RingComponent";
+import GrowPlanServices from '../utility/GrowPlanServices';
 
 const Load = () => {
   const { username } = useContext(AuthContext);
   const [growPlans, setGrowPlans] = useState([]);
   const [filteredGrowPlans, setFilteredGrowPlans] = useState([]);
+  const [cyclePlans, setCyclePlans] = useState([]);
+  const [filteredCyclePlans, setFilteredCyclePlans] = useState([]);
   const [showOnlyOwn, setShowOnlyOwn] = useState(true);
   const [statusMessage, setStatusMessage] = useState("");
   const [showTooltip, setShowTooltip] = useState(false);
@@ -43,7 +46,7 @@ const Load = () => {
     setSharingStatus(plan.sharingStatus);
     setTotalGrowTime(plan.growData.totalGrowTime);
   };
-
+  
   const deleteGrowPlan = async (plan) => {
     const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
     if (confirmDelete) {
@@ -128,30 +131,38 @@ const Load = () => {
     setShowTooltip(false);
   };
 
+  const getCyclePlans = async () => {
+	  console.log("Load.js: getCyclePlans is called");
+	  const result = await GrowPlanServices.getCyclePlans(username);
+	  console.log("result:");
+	  console.log(result);	
+	  
+	  if (result.success) {
+		setCyclePlans(result.data);
+		setFilteredCyclePlans(result.data.filter((plan) => plan.username === username));
+		setStatusMessage(result.message);
+	  } else {
+		setStatusMessage(result.message);
+	  }
+	};
+	
+  const getGrowPlans = async () => {
+	  console.log("Load.js: getGrowPlans is called");
+	  const result = await GrowPlanServices.getGrowPlans(username);
+	  console.log(result);	
+	  
+	  if (result.success) {
+		setGrowPlans(result.data);
+		setFilteredGrowPlans(result.data.filter((plan) => plan.username === username));
+		setStatusMessage(result.message);
+	  } else {
+		setStatusMessage(result.message);
+	  }
+	};	
 
-  const getGrowPlans = () => {
-    fetch(`http://localhost:5000/get-grow-plans/${username}`, {
-      method: "GET",
-      credentials: "include",
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.status === "success") {
-          setGrowPlans(data.data);
-          setFilteredGrowPlans(data.data.filter((plan) => plan.username === username));
-          setStatusMessage("Grow-Pläne erfolgreich geladen.");
-        } else {
-          setStatusMessage(`Fehler beim Laden der Grow-Pläne: ${data.message}`);
-        }
-      })
-      .catch((error) => {
-        console.error("Error:", error);
-        setStatusMessage("Fehler beim Laden der Grow-Pläne.");
-      });
-  };
 
   useEffect(() => {
-    getGrowPlans();
+    getCyclePlans();
   }, []);
 
   useEffect(() => {
@@ -192,7 +203,7 @@ const Load = () => {
           </tr>
         </thead>
         <tbody>
-          {(filteredGrowPlans || []).map((plan) => (
+          {(filteredCyclePlans || []).map((plan) => (
             <tr
               key={`${plan.username}-${plan.growCycleName}`}
               onMouseEnter={(e) => handleMouseEnter(e, plan)}

@@ -6,6 +6,7 @@ import Beleuchtung from './components/lightning';
 import Bewaesserung from './components/watering';
 import Temperatur from './components/temperature';
 import General_zycle from './components/General_zycle'
+import CreateGrowPlan from './components/CreateGrowPlan'
 import Analyse from './components/analysis';
 import Settings from './components/settings';
 import SettingsContextProvider from './contexts/SettingsContext';
@@ -55,6 +56,7 @@ const ProtectedRoutes = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
       <Route path="/home" element={<Home />} />
       <Route path="/aktueller-grow" element={<AktuellerGrow />} />
       <Route path="/growplaner/General_zycle" element={<General_zycle />} />
+	  <Route path="/growplaner/CreateGrowPlan" element={<CreateGrowPlan />} />
       <Route path="/growplaner/beleuchtung" element={<Beleuchtung />} />
       <Route path="/growplaner/bewaesserung" element={<Bewaesserung />} />
       <Route path="/growplaner/temperatur" element={<Temperatur />} />

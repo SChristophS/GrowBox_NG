@@ -20,7 +20,8 @@ const GrowPlanManager = () => {
   };
 
   const handleCreateGrowPlan = () => {
-    navigate('/create-growplan');
+	console.log("new.js: handleCreateGrowPlan is called");
+    navigate('/growplaner/CreateGrowPlan');
   };
 
   return (
