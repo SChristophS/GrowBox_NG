@@ -30,7 +30,7 @@ const Save = () => {
   
     console.log("JSON to be sent:", JSON.stringify(growPlan));
   
-    fetch("http://localhost:5000/save-grow-plan", {
+    fetch("http://localhost:5000/save-cycle-plan", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
