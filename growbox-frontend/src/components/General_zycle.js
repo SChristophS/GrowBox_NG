@@ -18,7 +18,7 @@ const General_zycle = () => {
   const { username } = useContext(AuthContext);
 
   const handleTotalGrowTimeChange = (value) => {
-    setTotalGrowTime(value * 60);
+	setTotalGrowTime(value * 1440); // Umrechnung von Tagen in Minuten
   };
 
   return (
@@ -54,14 +54,14 @@ const General_zycle = () => {
             <option value="private">private</option>
           </Form.Control>
         </Form.Group>
-        <Form.Group>
-        <Form.Label>TotalGrowTime (in Stunden)</Form.Label>
-            <Form.Control
-                type="number"
-                value={totalGrowTime ? totalGrowTime / 60 : ''}
-                onChange={(e) => handleTotalGrowTimeChange(parseFloat(e.target.value))}
-            />
-        </Form.Group>
+<Form.Group>
+  <Form.Label>TotalGrowTime (in Tagen)</Form.Label>
+  <Form.Control
+    type="number"
+    value={totalGrowTime ? totalGrowTime / 1440 : ''} // Umrechnung von Minuten in Tage
+    onChange={(e) => handleTotalGrowTimeChange(parseFloat(e.target.value))}
+  />
+</Form.Group>
       </Form>
     </Container>
   );

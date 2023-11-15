@@ -122,35 +122,99 @@ from flask import jsonify, request
 from pymongo import MongoClient
 # ... (andere benötigte Imports)
 
+
 @app.route("/save-cycle-plan", methods=["POST"])
 def save_cycle_plan():
     data = request.get_json()
     print("Erhaltene Daten:", data)  # Zeigt die empfangenen Daten an
 
     username = data["username"]
-    growCycleName = data["growCycleName"]
+    growPlanName = data["growPlanName"]
     overwrite = data["overwrite"]
     del data["overwrite"]
 
-    print(f"Benutzername: {username}, GrowCycleName: {growCycleName}, Überschreiben: {overwrite}")
+    print(f"Benutzername: {username}, growPlanName: {growPlanName}, Überschreiben: {overwrite}")
 
-    existing_plan = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find_one({"username": username, "growCycleName": growCycleName})
+    existing_plan = db[app.config["DATABASE_NAME_GROW_PLANS"]].find_one({"username": username, "growPlanName": growPlanName})
 
     if existing_plan:
         print("Existierender Plan gefunden:", existing_plan)
         if overwrite:
-            result = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].update_one({"_id": existing_plan["_id"]}, {"$set": data})
+            result = db[app.config["DATABASE_NAME_GROW_PLANS"]].update_one({"_id": existing_plan["_id"]}, {"$set": data})
             print("Update-Ergebnis:", result.modified_count)  # Zeigt die Anzahl der geänderten Dokumente
         else:
             print("Plan existiert bereits und Überschreiben ist nicht erlaubt.")
-            return jsonify({"message": "Grow plan with this name already exists."}), 400
+            return jsonify({"message": "Grow plan with this name already exists. Overide is not allowed"}), 400
     else:
         print("Kein existierender Plan gefunden, füge neuen hinzu.")
-        result = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].insert_one(data)
+        result = db[app.config["DATABASE_NAME_GROW_PLANS"]].insert_one(data)
         print("Insert-Ergebnis:", result.inserted_id)  # Zeigt die ID des eingefügten Dokuments
 
     return jsonify({"message": "Grow plan saved successfully."}), 200
 
+
+@app.route("/check-grow-plan-exists", methods=["POST"])
+def check_grow_plan_exists():
+    print(f"check_grow_plan_exists")
+    data = request.get_json()
+    print(data)
+    username = data["username"]
+    growPlanName = data["growPlanName"]
+    print(username)
+    print(growPlanName)
+
+    existing_plan = db[app.config["DATABASE_NAME_GROW_PLANS"]].find_one({"username": username, "growPlanName": growPlanName})
+
+    if existing_plan:
+        return jsonify({"exists": True}), 200
+    else:
+        return jsonify({"exists": False}), 200
+        
+        
+@app.route("/save-grow-plan", methods=["POST"])
+def save_grow_plan():
+    data = request.get_json()
+    print("Erhaltene Daten:", data)  # Zeigt die empfangenen Daten an
+
+    username = data["username"]
+    growPlanName = data["growPlanName"]
+
+    print(f"Benutzername: {username}, growPlanName: {growPlanName}")
+
+    # wir checken ob es bereits einen Plan gibt der aktualisiert werden soll
+    existing_plan = db[app.config["DATABASE_NAME_GROW_PLANS"]].find_one({"username": username, "growPlanName": growPlanName})
+    
+    if existing_plan:
+        # wir updaten
+        result = db[app.config["DATABASE_NAME_GROW_PLANS"]].update_one({"_id": existing_plan["_id"]}, {"$set": data})
+        print("Update-Ergebnis:", result.modified_count)  # Zeigt die Anzahl der geänderten Dokumente
+        return jsonify({"message": "Grow plan update successfully."}), 200
+    else:
+        # wir fügen neuen Hinzu
+        result = db[app.config["DATABASE_NAME_GROW_PLANS"]].insert_one(data)
+        print("Insert-Ergebnis:", result.inserted_id)  # Zeigt die ID des eingefügten Dokuments
+        return jsonify({"message": "Grow plan insert successfully."}), 200
+        
+        
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
 @app.route("/delete-grow-plan", methods=["DELETE"])
 def delete_grow_plan():

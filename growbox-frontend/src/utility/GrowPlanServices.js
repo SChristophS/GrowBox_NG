@@ -1,4 +1,6 @@
 const GrowPlanService = {
+	
+	
   async getGrowPlans(username) {
 	  console.log("getGrowPlans called with username:" + username);
     try {
@@ -17,6 +19,56 @@ const GrowPlanService = {
       return { success: false, message: `Fehler beim Laden der Grow-Pläne: ${error.toString()}` };
     }
   },
+  
+ async checkGrowPlanExists (username, growPlanName) {
+	  console.log("getGrowPlans called with username:" + username);
+	   console.log("getGrowPlans called with growPlanName:" + growPlanName);
+  try {
+    const response = await fetch("http://localhost:5000/check-grow-plan-exists", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username, growPlanName }),
+    });
+    const data = await response.json();
+	console.log("Hier Return Data von Backend");
+	console.log(data)
+	
+    return data.exists;
+  } catch (error) {
+    console.error("Fehler beim Überprüfen des Growplans:", error);
+    return false; // Bei Fehler, annehmen dass der Plan nicht existiert
+  }
+},
+
+async saveGrowPlan(growPlanData) {
+  console.log("GrowPlanServices: saveGrowPlan called with username:", growPlanData.username);
+  console.log("and growPlanData:", growPlanData);
+
+  try {
+    const response = await fetch("http://localhost:5000/save-grow-plan", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(growPlanData),
+    });
+
+    const data = await response.json();
+    console.log("Response from server:", data);
+    
+    return {
+      success: response.ok,
+      data: data,
+      message: response.ok ? "Grow plan saved successfully." : data.message,
+    };
+  } catch (error) {
+    console.error("Error:", error);
+    return { success: false, message: error.toString() };
+  }
+},
   
   async getCyclePlans(username) {
 	console.log("GrowPlanServices: getCyclePlans is called with username: " + username);
@@ -112,6 +164,8 @@ const GrowPlanService = {
     }
     return { success: false, message: "Aktion abgebrochen." };
   }
+  
+
   
 };
 
