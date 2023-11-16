@@ -15,6 +15,8 @@ import Load from './components/Load';
 import Save from './components/Save';
 import New from './components/new';
 import Login from './components/Login';
+import LoadCyclePlan from './components/LoadCyclePlan';
+import LoadGrowPlan from './components/LoadGrowPlan';
 import SendToGrowbox from './components/SendToGrowbox';
 import GrowplanAnalyse from './components/GrowplanAnalyse';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
@@ -60,10 +62,16 @@ const ProtectedRoutes = ({ isGrowPlanLoaded, setIsGrowPlanLoaded }) => {
       <Route path="/growplaner/beleuchtung" element={<Beleuchtung />} />
       <Route path="/growplaner/bewaesserung" element={<Bewaesserung />} />
       <Route path="/growplaner/temperatur" element={<Temperatur />} />
-      <Route path="/growplaner/load" element={<Load 
+      
+	  
+	  
+	  <Route path="/growplaner/LoadCyclePlan" element={<LoadCyclePlan 
         isGrowPlanLoaded={isGrowPlanLoaded} 
         setIsGrowPlanLoaded={setIsGrowPlanLoaded} 
       />} />
+	  <Route path="/growplaner/LoadGrowPlan" element={<LoadGrowPlan />} />
+	  <Route path="/growplaner/Load" element={<Load />} />
+	  
 	  <Route path="/growplaner/new" element={<New />} />
       <Route path="/growplaner/save" element={<Save />} />
       <Route path="/growplaner/GrowplanAnalyse" element={<GrowplanAnalyse />} />

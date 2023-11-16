@@ -107,18 +107,17 @@ async saveGrowPlan(growPlanData) {
     }
   },
   
-  async deleteGrowPlan(username, growPlanName) {
-    const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
-    if (confirmDelete) {
-      try {
+	async deleteGrowPlan(growPlanID) {
+		console.log("deleteGrowPlan called with growPlanID: " + growPlanID);
+   
+	  try {
         const response = await fetch("http://localhost:5000/delete-grow-plan", {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username,
-            growPlanName,
+            growPlanID
           }),
         });
 
@@ -132,7 +131,7 @@ async saveGrowPlan(growPlanData) {
       } catch (error) {
         return { success: false, message: error.toString() };
       }
-    }
+    
     return { success: false, message: "Aktion abgebrochen." };
   },
   

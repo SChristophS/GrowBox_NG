@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import paho.mqtt.client as mqtt
 import time
 import threading
+from bson import ObjectId
 
 
 app = Flask(__name__, template_folder="templates")
@@ -194,35 +195,15 @@ def save_grow_plan():
         result = db[app.config["DATABASE_NAME_GROW_PLANS"]].insert_one(data)
         print("Insert-Ergebnis:", result.inserted_id)  # Zeigt die ID des eingefügten Dokuments
         return jsonify({"message": "Grow plan insert successfully."}), 200
-        
-        
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+  
 
 @app.route("/delete-grow-plan", methods=["DELETE"])
 def delete_grow_plan():
     data = request.get_json()
-    username = data["username"]
-    growCycleName = data["growCycleName"]
+    growPlanID = data["growPlanID"]
+    print("Delete GrowPlan with ID" , growPlanID)
 
-    result = db[app.config["DATABASE_NAME_GROW_PLANS"]].delete_one({"username": username, "growCycleName": growCycleName})
+    result = db[app.config["DATABASE_NAME_GROW_PLANS"]].delete_one({"_id": ObjectId(growPlanID)})
 
     if result.deleted_count > 0:
         return jsonify({"message": "Grow plan deleted successfully."}), 200
