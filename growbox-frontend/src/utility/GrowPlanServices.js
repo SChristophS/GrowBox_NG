@@ -1,5 +1,25 @@
 const GrowPlanService = {
 	
+	// Funktion zum Abrufen der totalGrowTime für einen Zyklus
+async getCycleTotalTime(id) {
+	console.log("Aufruf getCycleTotalTime");
+  try {
+    const response = await fetch(`http://localhost:5000/get-cycle-totaltime/${id}`, {
+      method: "GET",
+      credentials: "include",
+    });
+
+    if (response.ok) {
+		console.log("response:", response);
+      const data = await response.json();
+      return { success: true, totalGrowTime: data.totalGrowTime };
+    } else {
+      return { success: false, totalGrowTime: 0 };
+    }
+  } catch (error) {
+    return { success: false, totalGrowTime: 0 };
+  }
+},
 	
   async getGrowPlans(username) {
 	  console.log("getGrowPlans called with username:" + username);
@@ -8,8 +28,10 @@ const GrowPlanService = {
         method: "GET",
         credentials: "include",
       });
+	  
       if (response.ok) {
         const data = await response.json();
+		console.log("data:", data);
         return { success: true, data: data.data, message: "Grow-Pläne erfolgreich geladen." };
       } else {
         const data = await response.json();
