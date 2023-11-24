@@ -1,16 +1,13 @@
-import React, { useContext, useState} from "react";
+import React, { useContext, useState, } from "react";
 import { Modal, Button } from 'react-bootstrap';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { AuthContext } from "../contexts/AuthContext";
+import { GrowPlanContext } from '../contexts/GrowPlanContext';
+import withContexts from '../contexts/withContexts'; // Pfad zur HOC-Datei anpassen
+import { reorder } from '../utility/utils'; // Passen Sie den Pfad an Ihre Verzeichnisstruktur an
+
+
 import GrowPlanServices from '../utility/GrowPlanServices';
 
-// Eine einfache Funktion, um die Liste nach dem Drag & Drop zu aktualisieren
-const reorder = (list, startIndex, endIndex) => {
-  const result = Array.from(list);
-  const [removed] = result.splice(startIndex, 1);
-  result.splice(endIndex, 0, removed);
-  return result;
-};
 
 // Anfangszustand der Cycle Plans
 const initialCyclePlans = [];
@@ -21,9 +18,10 @@ const initialDroppedItems = [];
 
 
 class CreateGrowPlan extends React.Component {
-	   static contextType = AuthContext;
 
 
+	
+  
 	state = {
 		cyclePlans: initialCyclePlans,
 		droppedItems: initialDroppedItems,
@@ -41,7 +39,7 @@ class CreateGrowPlan extends React.Component {
 	saveGrowPlan = async () => {
 		console.log("Aufruf saveGrowPlan");
 			
-		const username = this.context.username; 
+		const username = this.props.authContext.username;
 	  
 		if (!this.state.growPlanName) {
 			console.log("Kein Username");
@@ -64,12 +62,11 @@ class CreateGrowPlan extends React.Component {
 		const planExists = await GrowPlanServices.checkGrowPlanExists(username, growPlanData.growPlanName);
 		console.log("Result planExists : " + planExists);
 
-		if (planExists) {
-			console.log("planExists");
+		  if (planExists) {
 			this.setState({ showConfirmModal: true, growPlanData });
-		} else {
+		  } else {
 			this.submitGrowPlan(growPlanData);
-		}
+		  }
 	};
 	
 	submitGrowPlan = async (growPlanData) => {	
@@ -93,13 +90,24 @@ class CreateGrowPlan extends React.Component {
 
 
 
+componentDidUpdate(prevProps, prevState) {
+  // Überprüfen, ob sich die droppedItems geändert haben
+  if (prevState.droppedItems !== this.state.droppedItems) {
+    const totalTime = this.calculateTotalTime();
+    this.setState({ totalGrowDuration: totalTime });
+  }
+}
 
-	calculateTotalTime = () => {
-	  const totalTime = this.state.droppedItems.reduce((sum, item) => {
-		return sum + item.totalGrowTime;
-	  }, 0);
-	  return totalTime  / 1440// Umrechnen von Minuten in Tage
-	};
+calculateTotalTime = () => {
+
+  const totalTime = this.state.droppedItems.reduce((sum, item) => {
+	  	    //console.log("item:", item);
+
+    // Stellen Sie sicher, dass `item.totalGrowTime` existiert und ein gültiger Wert ist
+    return sum + (item.totalGrowTime || 0);
+  }, 0);
+  return totalTime / 1440; // Umrechnen von Minuten in Tage
+};
 	
 	getUniqueCycleNames = () => {
 	  const uniqueNames = {};
@@ -110,79 +118,87 @@ class CreateGrowPlan extends React.Component {
 	};
 
   
-	loadCyclePlans = async (username) => {
-	  // Benutze das Argument `username`, das von componentDidMount übergeben wurde
-	  const result = await GrowPlanServices.getCyclePlans(username);
-	  if (result.success) {
-		console.log('Cycle Plans geladen:', result.data);
-		const formattedCyclePlans = result.data.map(plan => ({
-		  id: plan._id,
-		  content: plan.growCycleName,
-		  description: plan.description,
-			totalGrowTime: plan.growData.totalGrowTime
-		}));
-		this.setState({ cyclePlans: formattedCyclePlans });
-	  } else {
-		console.error(result.message);
-	  }
-	};
+
   
-	componentDidMount() {
-	  const username = this.context.username;
-	  if (username) {
-		console.log("Username = " + username);
-		this.loadCyclePlans(username);
-	  } else {
-		console.log("Username ist nicht im Kontext definiert.");
-	  }
-	}
+componentDidMount() {
+	console.log("Aufruf componentDidMount");
+  const { loadedGrowPlan } = this.props.growPlanContext;
 
-	onDragEnd = (result) => {
-	  const { source, destination } = result;
+	console.log("loadedGrowPlan: ",loadedGrowPlan);
 
-	  // Nichts tun, wenn das Element außerhalb eines droppable Bereichs abgelegt wird
-	  if (!destination) {
-		return;
-	  }
+  if (loadedGrowPlan) {
+	  console.log("loadedGrowPlan: ",loadedGrowPlan);
+    // Aktualisieren Sie hier die Zustände mit den Daten des geladenen Grow Plans
+    
+	this.setState({
+      growPlanName: loadedGrowPlan.growPlanName,
+      growPlanDescription: loadedGrowPlan.growPlanDescription,
+      totalGrowDuration: loadedGrowPlan.totalGrowDuration,
+      // Für 'droppedItems' müssen Sie sicherstellen, dass die Daten korrekt formatiert sind
+	  droppedItems: loadedGrowPlan.droppedItems.map(item => ({
+        id: item.id, // oder eine andere ID, die Sie verwenden möchten
+        content: item.name, // oder eine andere Eigenschaft, die Sie anzeigen möchten
+		totalGrowTime: item.totalGrowTime
+        // Fügen Sie hier weitere notwendige Eigenschaften hinzu
+      }))
+    });
+  }
 
-	  // Überprüfen, ob das Element innerhalb desselben Bereichs verschoben wird
-	  if (source.droppableId === destination.droppableId) {
-		// Wenn es sich um den gleichen Bereich handelt und es der Bereich 'droppedItems' ist
-		if (source.droppableId === 'droppedItems') {
-		  // Aktualisiere die Reihenfolge der Elemente innerhalb des 'droppedItems' Bereichs
-		  const items = reorder(
-			this.state.droppedItems,
-			source.index,
-			destination.index
-		  );
+  // Laden der ursprünglichen Cycle Plans, falls kein Grow Plan geladen wurde
+  else {
+    const username = this.props.authContext.username;
+    if (username) {
+      this.props.growPlanContext.loadGrowPlans(username);
+    }
+  }
+}
 
-		  // Setze den neuen Zustand
-		  this.setState({
-			droppedItems: items
-		  });
-		}
-		return;
-	  }
 
-	  // Klonen der Arrays aus dem State
-	  const sourceClone = Array.from(this.state[source.droppableId]);
-	  const destClone = Array.from(this.state[destination.droppableId]);
-	  const item = sourceClone[source.index];
+onDragEnd = (result) => {
+  const { source, destination } = result;
 
-	  // Verschieben eines Elements zurück in den ursprünglichen "Stack"
-	  if (destination.droppableId === "cyclePlans") {
-		// Entfernen des Elements aus dem aktuellen Container
-		this.setState(prevState => ({
-		  droppedItems: prevState.droppedItems.filter(i => i.id !== item.id)
-		}));
-	  } else {
-		// Hinzufügen des Elements zum Zielcontainer und Vergabe einer neuen ID
-		destClone.splice(destination.index, 0, { ...item, databaseID: `${item.id}`,  id: `${item.id}-${destClone.length}` });
-		this.setState({
-		  [destination.droppableId]: destClone
-		});
-	  }
-	};
+  // Nichts tun, wenn das Element außerhalb eines droppable Bereichs abgelegt wird
+  if (!destination) {
+    return;
+  }
+
+  let sourceClone, destClone;
+
+  // Zuweisen der Arrays basierend auf der droppableId
+  if (source.droppableId === 'cyclePlans') {
+    sourceClone = Array.from(this.props.growPlanContext.growPlans);
+  } else if (source.droppableId === 'droppedItems') {
+    sourceClone = Array.from(this.state.droppedItems);
+  }
+
+  if (destination.droppableId === 'cyclePlans') {
+    destClone = Array.from(this.props.growPlanContext.growPlans);
+  } else if (destination.droppableId === 'droppedItems') {
+    destClone = Array.from(this.state.droppedItems);
+  }
+
+  const item = sourceClone[source.index];
+
+  // Überprüfen, ob das Element existiert
+  if (!item) {
+    console.error('Zu verschiebendes Element nicht gefunden');
+    return;
+  }
+
+  // Verschieben eines Elements zurück in den ursprünglichen "Stack"
+  if (destination.droppableId === "cyclePlans") {
+    // Entfernen des Elements aus dem aktuellen Container
+    this.setState(prevState => ({
+      droppedItems: prevState.droppedItems.filter(i => i.id !== item.id)
+    }));
+  } else {
+    // Hinzufügen des Elements zum Zielcontainer und Vergabe einer neuen ID
+    destClone.splice(destination.index, 0, { ...item, databaseID: `${item.id}`, id: `${item.id}-${destClone.length}` });
+    this.setState({
+      [destination.droppableId]: destClone
+    });
+  }
+};
 
 
 
@@ -191,8 +207,11 @@ render() {
 	const totalCycleTime = this.calculateTotalTime();
 	const uniqueCycleNames = this.getUniqueCycleNames();
 	const totalGrowDuration = this.state.totalGrowDuration;
-  const progressPercentage = totalGrowDuration > 0 ? Math.min((totalCycleTime / totalGrowDuration) * 100, 100) : 0;
-  const isOverLimit = totalCycleTime > totalGrowDuration;
+	const progressPercentage = totalGrowDuration > 0 ? Math.min((totalCycleTime / totalGrowDuration) * 100, 100) : 0;
+	const isOverLimit = totalCycleTime > totalGrowDuration;
+    const cyclePlans = this.props.growPlanContext.growPlans;
+
+	console.log("Render cyclePlans:", cyclePlans);
   
     const progressBarStyle = isOverLimit 
     ? { width: `${progressPercentage}%`, backgroundColor: 'red' } 
@@ -240,34 +259,36 @@ render() {
 
 		
 		
-        <Droppable droppableId="cyclePlans">
+<Droppable droppableId="cyclePlans">
+  {(provided, snapshot) => (
+    <div
+      ref={provided.innerRef}
+      className={`droppable-container initial-plans ${snapshot.isDraggingOver ? 'initial-plans-dragging-over' : ''}`}
+      {...provided.droppableProps}
+    >
+      {cyclePlans.map((item, index) => (
+        <Draggable key={item.id} draggableId={item.id} index={index}>
           {(provided, snapshot) => (
             <div
               ref={provided.innerRef}
-              className={`droppable-container initial-plans ${snapshot.isDraggingOver ? 'initial-plans-dragging-over' : ''}`}
-              {...provided.droppableProps}
+              {...provided.draggableProps}
+              {...provided.dragHandleProps}
+              className={`draggable-item ${snapshot.isDragging ? 'draggable-item-dragging' : ''}`}
+              style={provided.draggableProps.style}
             >
-			{this.state.cyclePlans.map((item, index) => (
-			  <Draggable key={item.id} draggableId={item.id} index={index}>
-				{(provided, snapshot) => (
-				  <div
-					ref={provided.innerRef}
-					{...provided.draggableProps}
-					{...provided.dragHandleProps}
-					className={`draggable-item ${snapshot.isDragging ? 'draggable-item-dragging' : ''}`}
-					style={provided.draggableProps.style}
-				  >
-					<div>{item.content}</div>
-					<div>{item.description}</div>
-					<div>Total Grow Time: {item.totalGrowTime / 1440} Tage</div>
-				  </div>
-				)}
-			  </Draggable>
-			))}
-              {provided.placeholder}
+              <div>{item.content}</div>
+              <div>{item.description}</div>
+              <div>Total Grow Time: {item.totalGrowTime / 1440} Tage</div>
             </div>
           )}
-        </Droppable>
+        </Draggable>
+      ))}
+      {provided.placeholder}
+    </div>
+  )}
+</Droppable>
+
+
 
         {/* Zweiter Bereich zum Ablegen der Cycle Plans */}
         <Droppable droppableId="droppedItems">
@@ -380,4 +401,4 @@ render() {
 }
 };
 
-export default CreateGrowPlan;
+export default withContexts(CreateGrowPlan);

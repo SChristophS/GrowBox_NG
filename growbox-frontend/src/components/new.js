@@ -1,26 +1,22 @@
-import React, { useState, useContext } from "react";
-import { SettingsContext } from '../contexts/SettingsContext';
-
-import { Container, Row, Col, Button } from 'react-bootstrap';
+import React, { useContext } from "react";
 import { useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Button } from 'react-bootstrap';
+import { SettingsContext } from '../contexts/SettingsContext';
+import { GrowPlanContext } from '../contexts/GrowPlanContext'; // Import des GrowPlanContexts
 
-
-  
 const GrowPlanManager = () => {
-  
-  const { 
-    createSettings
-  } = useContext(SettingsContext);
-  
+  const { createSettings } = useContext(SettingsContext);
+  const { setLoadedGrowPlan } = useContext(GrowPlanContext); // Zugriff auf setLoadedGrowPlan
   let navigate = useNavigate();
 
   const handleCreateCycle = () => {
-	createSettings();  
+    createSettings();  
     navigate('/growplaner/General_zycle');
   };
 
   const handleCreateGrowPlan = () => {
-	console.log("new.js: handleCreateGrowPlan is called");
+    console.log("new.js: handleCreateGrowPlan is called");
+    setLoadedGrowPlan(null); // Zurücksetzen des geladenen GrowPlans
     navigate('/growplaner/CreateGrowPlan');
   };
 

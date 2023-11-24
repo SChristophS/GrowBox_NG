@@ -245,6 +245,26 @@ def get_cycle_plans(username):
         print(e)
         return jsonify({"status": "error", "message": "Unable to fetch cycle plans."}), 500        
 
+@app.route("/get-cycle-totaltime/<cycle_id>", methods=["GET"])
+def get_cycle_totaltime(cycle_id):
+    try:
+        # Entfernen Sie alles nach dem Bindestrich in der ID
+        sanitized_cycle_id = cycle_id.split('-')[0]
+
+        # Führen Sie die Abfrage mit der bereinigten ID durch
+        cycle_plan = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find_one({"_id": ObjectId(sanitized_cycle_id)})
+        if cycle_plan:
+            total_grow_time = cycle_plan.get("growData", {}).get("totalGrowTime", 0)
+            return jsonify({"status": "success", "totalGrowTime": total_grow_time}), 200
+        else:
+            return jsonify({"status": "error", "message": "Cycle Plan not found."}), 404
+    except Exception as e:
+        print(e)
+        return jsonify({"status": "error", "message": "Unable to fetch cycle total time."}), 500
+
+
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":

@@ -10,6 +10,7 @@ import CreateGrowPlan from './components/CreateGrowPlan'
 import Analyse from './components/analysis';
 import Settings from './components/settings';
 import SettingsContextProvider from './contexts/SettingsContext';
+import { GrowPlanProvider } from './contexts/GrowPlanContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Load from './components/Load';
 import Save from './components/Save';
@@ -28,6 +29,7 @@ const App = () => {
   return (
     <SettingsContextProvider>
       <AuthProvider>
+	   <GrowPlanProvider>
         <Router>
           <NavigationBar 
             isGrowPlanLoaded={isGrowPlanLoaded} 
@@ -41,6 +43,7 @@ const App = () => {
             />} />
           </Routes>
         </Router>
+	  </GrowPlanProvider>
       </AuthProvider>
     </SettingsContextProvider>
   );

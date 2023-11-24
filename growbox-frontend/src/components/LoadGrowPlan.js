@@ -2,8 +2,14 @@ import React, { useContext, useState, useEffect } from "react";
 import { Container, Table, Form, Row, Col, Button } from "react-bootstrap";
 import GrowPlanServices from '../utility/GrowPlanServices';
 import { AuthContext } from "../contexts/AuthContext";
+import { GrowPlanContext } from '../contexts/GrowPlanContext';
+import { useNavigate } from 'react-router-dom';
+
 
 const LoadGrowCycle = () => {
+	  let navigate = useNavigate();
+
+	
   const [growCycles, setGrowCycles] = useState([]);
   const [filteredGrowCycles, setFilteredGrowCycles] = useState([]);
   const [statusMessage, setStatusMessage] = useState("");
@@ -12,6 +18,7 @@ const LoadGrowCycle = () => {
   const { username } = useContext(AuthContext);
   console.log("username = " + username);
 
+  const { setLoadedGrowPlan } = useContext(GrowPlanContext); // Hier den Kontext verwenden
 
   useEffect(() => {
 	loadGrowPlans();
@@ -21,6 +28,7 @@ const LoadGrowCycle = () => {
 		setLoading(true);
 		GrowPlanServices.getGrowPlans(username)
     .then(response => {
+		console.log("response from loadGrowPlans:", response)
         setGrowCycles(response.data);
         setFilteredGrowCycles(response.data);
         setLoading(false);
@@ -45,9 +53,30 @@ const LoadGrowCycle = () => {
   };
   
   
-     const handleLoadGrowCycle = (e) => {
-	console.log(e);
-  };
+// Angepasste handleLoadGrowCycle Funktion
+const handleLoadGrowCycle = async (cycle) => {
+  // Setzen des geladenen Grow Plans im Kontext
+  setLoadedGrowPlan(cycle);
+
+  // Abrufen der totalGrowTime für jeden Zyklus
+  const updatedDroppedItems = await Promise.all(cycle.droppedItems.map(async (item) => {
+    const totalTimeResponse = await GrowPlanServices.getCycleTotalTime(item.id);
+
+    return {
+      ...item,
+      totalGrowTime: totalTimeResponse.success ? totalTimeResponse.totalGrowTime : 0
+    };
+  }));
+
+  // Aktualisieren des geladenen Grow Plans im Kontext mit der totalGrowTime
+  setLoadedGrowPlan({ ...cycle, droppedItems: updatedDroppedItems });
+
+  // Navigieren zur CreateGrowPlan-Komponente
+  navigate('/growplaner/CreateGrowPlan');
+};
+
+
+
   
   
      const handleDeleteGrowCycle = (e) => {
