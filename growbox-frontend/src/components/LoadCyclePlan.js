@@ -2,6 +2,8 @@ import React, { useContext, useState, useEffect } from "react";
 import { Container, Table, Form, Row, Col, Button } from "react-bootstrap";
 import { AuthContext } from "../contexts/AuthContext";
 import { SettingsContext } from "../contexts/SettingsContext";
+import { GrowCycleContext } from "../contexts/GrowCycleContext";
+
 import RingComponent from "./RingComponent";
 import GrowPlanServices from '../utility/GrowPlanServices';
 
@@ -17,65 +19,72 @@ const Load = () => {
   const [tooltipData, setTooltipData] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [loadStatus, setLoadStatus] = useState("");
+  const { isCyclePlanLoaded, setIsCyclePlanLoaded } = useContext(GrowCycleContext);
+
 
   const {
-    updateLedSettings,
+    setLedSettings,
     setTemperatureSettings,
     setWateringSettings,
     setGrowCycleName,
     setDescription,
     setSharingStatus,
     setTotalGrowTime,
-    setIsGrowPlanLoaded
-  } = useContext(SettingsContext);
+  } = useContext(GrowCycleContext);
+  
 
-  const loadGrowPlan = (plan) => {
-    const loadedLedSettings = plan.growData.ledCycles;
-    const loadedTemperatureSettings = plan.growData.tempCycles;
-    const loadedWateringSettings = plan.growData.wateringCycles;
-    setLoadStatus(`Grow-Plan '${plan.growCycleName}' erfolgreich geladen.`);
+
+  const loadCyclePlan = (plan) => {
+		console.log("loadCyclePlan aufgerufen");
 		
-    // Setzen von isGrowPlanLoaded auf true, um zu signalisieren, dass ein Plan geladen wurde
-    setIsGrowPlanLoaded(true);
+		const loadedLedSettings = plan.growData.ledCycles;
+		const loadedTemperatureSettings = plan.growData.tempCycles;
+		const loadedWateringSettings = plan.growData.wateringCycles;
+		setLoadStatus(`Grow-Plan '${plan.growCycleName}' erfolgreich geladen.`);
+		
+		// Setzen von isGrowPlanLoaded auf true, um zu signalisieren, dass ein Plan geladen wurde
+		setIsCyclePlanLoaded(true);
 
-    updateLedSettings(loadedLedSettings);
-    setTemperatureSettings(loadedTemperatureSettings);
-    setWateringSettings(loadedWateringSettings);
-    setGrowCycleName(plan.growCycleName);
-    setDescription(plan.description);
-    setSharingStatus(plan.sharingStatus);
-    setTotalGrowTime(plan.growData.totalGrowTime);
+
+		setLedSettings(loadedLedSettings);
+		setTemperatureSettings(loadedTemperatureSettings);
+		setWateringSettings(loadedWateringSettings);
+		setGrowCycleName(plan.growCycleName);
+		setDescription(plan.description);
+		setSharingStatus(plan.sharingStatus);
+		setTotalGrowTime(plan.growData.totalGrowTime);
   };
   
-  const deleteGrowPlan = async (plan) => {
-    const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
-    if (confirmDelete) {
-      try {
-        const response = await fetch("http://localhost:5000/delete-grow-plan", {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username: username,
-            growCycleName: plan.growCycleName,
-          }),
-        });
+  
+    
+     const deleteCyclePlan = (plan) => {
+	console.log(plan);
+	console.log(plan._id);
+	const deleteID = plan._id;
+	const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
 
-        if (response.ok) {
-          const data = await response.json();
-          alert(data.message);
-          getGrowPlans();
-          setIsGrowPlanLoaded(false);
-        } else {
-          const data = await response.json();
-          alert(data.message);
-        }
-      } catch (error) {
-        console.error("Error:", error);
-      }
-    }
+	if (confirmDelete){
+		GrowPlanServices.deleteCyclePlan(deleteID)
+		  .then(response => {
+			console.log(response);
+			console.log("Jetzt im .then bereich");
+			console.log(response.success);
+			
+			if (response.success){
+				getCyclePlans();
+			}
+			
+		  })
+		  .catch(error => {
+			setStatusMessage("Fehler beim Laden der GrowCycles");
+		  });
+	};
+	  
+	  
+	
   };
+  
+  
 
   const [checkPassed, setCheckPassed] = useState(false);
 
@@ -145,7 +154,7 @@ const Load = () => {
 		setStatusMessage(result.message);
 	  }
 	};
-	
+	/* 
   const getGrowPlans = async () => {
 	  console.log("Load.js: getGrowPlans is called");
 	  const result = await GrowPlanServices.getGrowPlans(username);
@@ -158,7 +167,7 @@ const Load = () => {
 	  } else {
 		setStatusMessage(result.message);
 	  }
-	};	
+	};	 */
 
 
   useEffect(() => {
@@ -214,11 +223,11 @@ const Load = () => {
               <td>{plan.description}</td>
               <td>{plan.sharingStatus ? "Geteilt" : "Privat"}</td>
               <td>
-                <Button variant="primary" size="sm" onClick={() => loadGrowPlan(plan)}>
+                <Button variant="primary" size="sm" onClick={() => loadCyclePlan(plan)}>
                   Laden
                 </Button>
                 {' '}
-                <Button variant="danger" size="sm" onClick={() => deleteGrowPlan(plan)}>
+                <Button variant="danger" size="sm" onClick={() => deleteCyclePlan(plan)}>
                   Löschen
                 </Button>
               </td>

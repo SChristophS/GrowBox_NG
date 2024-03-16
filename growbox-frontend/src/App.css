@@ -24,6 +24,13 @@
     box-sizing: border-box;
 }
 
+.input-group input {
+  width: 100%; /* Stellt sicher, dass das Eingabefeld die volle Breite des übergeordneten Elements einnimmt */
+  max-width: 300px; /* Optional, um eine maximale Breite festzulegen */
+  /* Weitere Stile nach Bedarf */
+}
+
+
 /* Button-Stil */
 button {
     background-color: #0056b3;
@@ -140,6 +147,13 @@ h3 {
   transition: width 0.5s ease-in-out;
 }
 
+.cycle-input{
+    width: 100% !important; /* Erzwingt volle Breite */
+    padding: 5px 10px !important; /* Erzwingt Innenabstand */
+    border: 1px solid #ccc !important; /* Erzwingt eine Grenze */
+    border-radius: 4px !important; /* Erzwingt abgerundete Ecken */
+    font-size: 16px !important; /* Setzt eine lesbare Schriftgröße und überschreibt vorherige 5px */
+}
 
 .input-container, .information-about-growplan-container {
   flex: 1;
@@ -151,6 +165,8 @@ h3 {
   flex-direction: column;
   gap: 10px;
 }
+
+
 
 .input-group {
   display: flex;

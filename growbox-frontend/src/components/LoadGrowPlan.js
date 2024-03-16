@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 
 
 const LoadGrowCycle = () => {
-	  let navigate = useNavigate();
+  let navigate = useNavigate();
 
 	
   const [growCycles, setGrowCycles] = useState([]);
@@ -53,14 +53,13 @@ const LoadGrowCycle = () => {
   };
   
   
-// Angepasste handleLoadGrowCycle Funktion
 const handleLoadGrowCycle = async (cycle) => {
   // Setzen des geladenen Grow Plans im Kontext
   setLoadedGrowPlan(cycle);
 
   // Abrufen der totalGrowTime für jeden Zyklus
-  const updatedDroppedItems = await Promise.all(cycle.droppedItems.map(async (item) => {
-    const totalTimeResponse = await GrowPlanServices.getCycleTotalTime(item.id);
+	const updatedDroppedItems = await Promise.all(cycle.droppedItems.map(async (item) => {
+		const totalTimeResponse = await GrowPlanServices.getCycleTotalTime(item.id);
 
     return {
       ...item,
@@ -80,10 +79,10 @@ const handleLoadGrowCycle = async (cycle) => {
   
   
      const handleDeleteGrowCycle = (e) => {
-	console.log(e);
-	const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
-	console.log(e._id);
-	const deleteID = e._id;
+			console.log(e);
+			const confirmDelete = window.confirm("Möchten Sie diesen Growplan wirklich löschen?");
+			console.log(e._id);
+			const deleteID = e._id;
 	
 	
 	GrowPlanServices.deleteGrowPlan(deleteID)

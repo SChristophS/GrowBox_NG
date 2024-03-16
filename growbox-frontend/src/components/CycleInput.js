@@ -70,7 +70,7 @@ const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete, showDura
 
           return (
             <Form.Group as={Row} key={name}>
-              <Form.Label column sm={4}>
+              <Form.Label column sm={5}>
                 {name}
               </Form.Label>
               <Col sm={6}>
@@ -86,6 +86,7 @@ const CycleInput = ({ cycleType, cycleIndex, cycle, onChange, onDelete, showDura
                 ) : (
                   <InputGroup>
                     <Form.Control
+					  className="cycle-input"
                       type="number"
                       value={value}
                       onChange={(e) => handleChange(name, parseInt(e.target.value))}

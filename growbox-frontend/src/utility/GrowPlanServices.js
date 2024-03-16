@@ -2,7 +2,7 @@ const GrowPlanService = {
 	
 	// Funktion zum Abrufen der totalGrowTime für einen Zyklus
 async getCycleTotalTime(id) {
-	console.log("Aufruf getCycleTotalTime");
+	console.log("Aufruf getCycleTotalTime mit ID:", id);
   try {
     const response = await fetch(`http://localhost:5000/get-cycle-totaltime/${id}`, {
       method: "GET",
@@ -21,7 +21,7 @@ async getCycleTotalTime(id) {
   }
 },
 	
-  async getGrowPlans(username) {
+async getGrowPlans(username) {
 	  console.log("getGrowPlans called with username:" + username);
     try {
       const response = await fetch(`http://localhost:5000/get-grow-plans/${username}`, {
@@ -64,6 +64,35 @@ async getCycleTotalTime(id) {
   }
 },
 
+async transmitGrowPlanToTarget(growplan_with_targetID) {
+	console.log("GrowPlanServices: transmitGrowPlanToTarget called");
+	console.log("growplan_with_targetID: ", growplan_with_targetID);
+  
+
+  try {
+    const response = await fetch("http://localhost:5000/transmit-grow-plan-to-target", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(growplan_with_targetID),
+    });
+
+    const data = await response.json();
+    console.log("Response from server:", data);
+    
+    return {
+      success: response.ok,
+      data: data,
+      message: response.ok ? "Grow plan transmitted successfully." : data.message,
+    };
+  } catch (error) {
+    console.error("Error:", error);
+    return { success: false, message: error.toString() };
+  }
+},
+
 async saveGrowPlan(growPlanData) {
   console.log("GrowPlanServices: saveGrowPlan called with username:", growPlanData.username);
   console.log("and growPlanData:", growPlanData);
@@ -102,6 +131,70 @@ async saveGrowPlan(growPlanData) {
       if (response.ok) {
         const data = await response.json();
         return { success: true, data: data.data, message: "Cycle-Pläne erfolgreich geladen." };
+      } else {
+        const data = await response.json();
+        return { success: false, message: `Fehler beim Laden der Cycle-Pläne: ${data.message}` };
+      }
+    } catch (error) {
+      return { success: false, message: `Fehler beim Laden der Cycle-Pläne: ${error.toString()}` };
+    }
+  },
+  
+  async getGrowboxIDsFromUsername(username) {
+	console.log("GrowPlanServices: getGrowboxIDsFromUsername is called with username: " + username);
+    try {
+      const response = await fetch(`http://localhost:5000/get-growboxIDs-from-username/${username}`, {
+        method: "GET",
+        credentials: "include",
+      });
+	  
+	  //console.log(response);
+      if (response.ok) {
+		  console.log("GrowPlanServices.getGrowboxIDsFromUsername: Response ok");
+        
+			const data = await response.json();
+			console.log(data);
+        return { success: true, data: data.data, message: "Cycle-Plan erfolgreich geladen." };
+      } else {
+        const data = await response.json();
+        return { success: false, message: `Fehler beim Laden der Cycle-Pläne: ${data.message}` };
+      }
+    } catch (error) {
+      return { success: false, message: `Fehler beim Laden der Cycle-Pläne: ${error.toString()}` };
+    }
+  },
+
+  async getAllPlans(username) {
+    try {
+      const response = await fetch(`http://localhost:5000/get-all-plans/${username}`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, data: data.data, message: "Alle Pläne erfolgreich geladen." };
+      } else {
+        const data = await response.json();
+        return { success: false, message: `Fehler beim Laden aller Pläne: ${data.message}` };
+      }
+    } catch (error) {
+      return { success: false, message: `Fehler beim Laden aller Pläne: ${error.toString()}` };
+    }
+  },
+
+ 
+  async getCyclePlanFromID(id) {
+	console.log("GrowPlanServices: getCyclePlans is called with id: " + id);
+    try {
+      const response = await fetch(`http://localhost:5000/get-cycle-plan-from-id/${id}`, {
+        method: "GET",
+        credentials: "include",
+      });
+	  //console.log(response);
+      if (response.ok) {
+        const data = await response.json();
+		//console.log(data);
+        return { success: true, data: data.data, message: "Cycle-Plan erfolgreich geladen." };
       } else {
         const data = await response.json();
         return { success: false, message: `Fehler beim Laden der Cycle-Pläne: ${data.message}` };
@@ -157,9 +250,9 @@ async saveGrowPlan(growPlanData) {
     return { success: false, message: "Aktion abgebrochen." };
   },
   
-   async deleteCyclePlan(username, growCycleName) {
-    const confirmDelete = window.confirm("Möchten Sie diesen Cycle wirklich löschen?");
-    if (confirmDelete) {
+   async deleteCyclePlan(growCycleID) {
+	   		console.log("deleteCyclePlan called with growPlanID: " + growCycleID);
+
       try {
         const response = await fetch("http://localhost:5000/delete-cycle-plan", {
           method: "DELETE",
@@ -167,8 +260,7 @@ async saveGrowPlan(growPlanData) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            username,
-            growCycleName,
+            growCycleID
           }),
         });
 
@@ -182,7 +274,6 @@ async saveGrowPlan(growPlanData) {
       } catch (error) {
         return { success: false, message: error.toString() };
       }
-    }
     return { success: false, message: "Aktion abgebrochen." };
   }
   

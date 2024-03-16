@@ -1,10 +1,7 @@
-import React, { useContext, useState, } from "react";
+import React from "react";
 import { Modal, Button } from 'react-bootstrap';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { GrowPlanContext } from '../contexts/GrowPlanContext';
 import withContexts from '../contexts/withContexts'; // Pfad zur HOC-Datei anpassen
-import { reorder } from '../utility/utils'; // Passen Sie den Pfad an Ihre Verzeichnisstruktur an
-
 
 import GrowPlanServices from '../utility/GrowPlanServices';
 
@@ -14,7 +11,6 @@ const initialCyclePlans = [];
 
 // Anfangszustand für den zweiten Bereich, anfänglich leer
 const initialDroppedItems = [];
-
 
 
 class CreateGrowPlan extends React.Component {
@@ -47,6 +43,8 @@ class CreateGrowPlan extends React.Component {
 			return;
 		}	
 		
+		console.log(this);
+		
 		const growPlanData = {
 			username: username,
 			growPlanName: this.state.growPlanName,
@@ -68,6 +66,7 @@ class CreateGrowPlan extends React.Component {
 			this.submitGrowPlan(growPlanData);
 		  }
 	};
+	
 	
 	submitGrowPlan = async (growPlanData) => {	
 		console.log("aufruf submitGrowPlan");	

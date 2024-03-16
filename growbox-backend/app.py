@@ -8,6 +8,8 @@ import paho.mqtt.client as mqtt
 import time
 import threading
 from bson import ObjectId
+from bson import json_util
+import json
 
 
 app = Flask(__name__, template_folder="templates")
@@ -22,6 +24,7 @@ app.config["DATABASE_NAME"] = "your_database_name"
 app.config["DATABASE_NAME_USER"] = "users"
 app.config["DATABASE_NAME_GROW_PLANS"] = "grow_plans"
 app.config["DATABASE_NAME_CYCLE_PLANS"] = "cycle_plans"
+app.config["DATABASE_NAME_DEVICES"] = "devices"
 app.config["DEVICES"] = "devices"
 
 bcrypt = Bcrypt(app)
@@ -49,7 +52,6 @@ def mark_device_as_disconnected(device_id):
     if device_id in connected_devices:
         del connected_devices[device_id]
         print(f"Device {device_id} is now disconnected.")
-
 
 def send_alive_messages():
     while True:
@@ -105,9 +107,32 @@ def on_message(client, userdata, msg):
         device_timers[device_id] = threading.Timer(10.0, mark_device_as_disconnected, args=[device_id])
         device_timers[device_id].start()
 
+def send_growplan_to_growbox(device_id, grow_plan_data):
+  """
+  Sendet den Wachstumsplan an die Growbox mit der angegebenen ID.
 
+  Args:
+      device_id (str): Die ID der Growbox.
+      grow_plan_data (dict): Das Wörterbuch mit den Daten des Wachstumsplans.
 
-    
+  Returns:
+      None
+  """
+
+  if not device_id or not grow_plan_data:
+    return
+
+  # Erstellen der Topic-Zeichenkette
+  topic = f"growbox/{device_id}/newGrowplan"
+
+  # Serialisierung des Wachstumsplans in JSON
+  payload = json.dumps(grow_plan_data)
+
+  # Veröffentlichen der Nachricht
+  mqtt_client.publish(topic, payload)
+
+  print(f"Wachstumsplan an Growbox {device_id} gesendet.")
+
 
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
@@ -121,7 +146,6 @@ else:
     
 from flask import jsonify, request
 from pymongo import MongoClient
-# ... (andere benötigte Imports)
 
 
 @app.route("/save-cycle-plan", methods=["POST"])
@@ -130,29 +154,28 @@ def save_cycle_plan():
     print("Erhaltene Daten:", data)  # Zeigt die empfangenen Daten an
 
     username = data["username"]
-    growPlanName = data["growPlanName"]
+    growCycleName = data["growCycleName"]
     overwrite = data["overwrite"]
     del data["overwrite"]
 
-    print(f"Benutzername: {username}, growPlanName: {growPlanName}, Überschreiben: {overwrite}")
+    print(f"Benutzername: {username}, growCycleName: {growCycleName}, Überschreiben: {overwrite}")
 
-    existing_plan = db[app.config["DATABASE_NAME_GROW_PLANS"]].find_one({"username": username, "growPlanName": growPlanName})
+    existing_plan = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find_one({"username": username, "growCycleName": growCycleName})
 
     if existing_plan:
         print("Existierender Plan gefunden:", existing_plan)
         if overwrite:
-            result = db[app.config["DATABASE_NAME_GROW_PLANS"]].update_one({"_id": existing_plan["_id"]}, {"$set": data})
+            result = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].update_one({"_id": existing_plan["_id"]}, {"$set": data})
             print("Update-Ergebnis:", result.modified_count)  # Zeigt die Anzahl der geänderten Dokumente
         else:
             print("Plan existiert bereits und Überschreiben ist nicht erlaubt.")
             return jsonify({"message": "Grow plan with this name already exists. Overide is not allowed"}), 400
     else:
         print("Kein existierender Plan gefunden, füge neuen hinzu.")
-        result = db[app.config["DATABASE_NAME_GROW_PLANS"]].insert_one(data)
+        result = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].insert_one(data)
         print("Insert-Ergebnis:", result.inserted_id)  # Zeigt die ID des eingefügten Dokuments
 
     return jsonify({"message": "Grow plan saved successfully."}), 200
-
 
 @app.route("/check-grow-plan-exists", methods=["POST"])
 def check_grow_plan_exists():
@@ -170,7 +193,6 @@ def check_grow_plan_exists():
         return jsonify({"exists": True}), 200
     else:
         return jsonify({"exists": False}), 200
-        
         
 @app.route("/save-grow-plan", methods=["POST"])
 def save_grow_plan():
@@ -195,11 +217,21 @@ def save_grow_plan():
         result = db[app.config["DATABASE_NAME_GROW_PLANS"]].insert_one(data)
         print("Insert-Ergebnis:", result.inserted_id)  # Zeigt die ID des eingefügten Dokuments
         return jsonify({"message": "Grow plan insert successfully."}), 200
-  
 
+@app.route("/transmit-grow-plan-to-target", methods=["POST"])
+def transmit_grow_plan_to_target():
+    print("transmit_grow_plan_to_target aufgerufen")
+    grow_plan_data = request.get_json()
+    device_id = grow_plan_data['device_id']
+    print(f"Transmit Received Data to Device mit device_id: {device_id}")
+
+    send_growplan_to_growbox(device_id, grow_plan_data)
+    return jsonify({"message": "Transmit to target was successfully."}), 200
+  
 @app.route("/delete-grow-plan", methods=["DELETE"])
 def delete_grow_plan():
     data = request.get_json()
+    print(data);
     growPlanID = data["growPlanID"]
     print("Delete GrowPlan with ID" , growPlanID)
 
@@ -210,24 +242,36 @@ def delete_grow_plan():
     else:
         return jsonify({"message": "Unable to delete the grow plan. Grow plan not found."}), 400
 
+@app.route("/delete-cycle-plan", methods=["DELETE"])
+def delete_cycle_plan():
+    data = request.get_json()
+    growCycleID = data["growCycleID"]
+    print("Delete GrowCycle with ID" , growCycleID)
+
+    result = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].delete_one({"_id": ObjectId(growCycleID)})
+
+    if result.deleted_count > 0:
+        return jsonify({"message": "cycle plan deleted successfully."}), 200
+    else:
+        return jsonify({"message": "Unable to delete the cycle plan. Cycle plan not found."}), 400
+
 @app.route("/get-grow-plans/<username>", methods=["GET"])
 def get_grow_plans(username):
     try:
         user_grow_plans = list(db[app.config["DATABASE_NAME_GROW_PLANS"]].find({"username": username}))
-        public_grow_plans = list(
-            db[app.config["DATABASE_NAME_GROW_PLANS"]].find({"sharingStatus": "public", "username": {"$ne": username}}))
+        #public_grow_plans = list(
+        #    db[app.config["DATABASE_NAME_GROW_PLANS"]].find({"sharingStatus": "public", "username": {"$ne": username}}))
 
-        grow_plans = user_grow_plans + public_grow_plans
-        print(public_grow_plans)
+        #grow_plans = user_grow_plans + public_grow_plans
+        #print(user_grow_plans)
 
-        for plan in grow_plans:
+        for plan in user_grow_plans:
             plan["_id"] = str(plan["_id"])
-        return jsonify({"status": "success", "data": grow_plans}), 200
+        return jsonify({"status": "success", "data": user_grow_plans}), 200
     except Exception as e:
         print(e)
         return jsonify({"status": "error", "message": "Unable to fetch grow plans."}), 500
         
-
 @app.route("/get-cycle-plans/<username>", methods=["GET"])
 def get_cycle_plans(username):
     try:
@@ -243,7 +287,48 @@ def get_cycle_plans(username):
         return jsonify({"status": "success", "data": cycle_plans}), 200
     except Exception as e:
         print(e)
-        return jsonify({"status": "error", "message": "Unable to fetch cycle plans."}), 500        
+        return jsonify({"status": "error", "message": "Unable to fetch cycle plans."}), 500
+        
+@app.route("/get-cycle-plan-from-id/<id>", methods=["GET"])
+def get_cycle_plan(id):
+    try:
+        cycle_plan = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find_one({"_id": ObjectId(id)})
+        print(cycle_plan)
+        
+        cycle_plan_json = json_util.dumps(cycle_plan)
+
+        return jsonify({"status": "success", "data": cycle_plan_json}), 200
+    except Exception as e:
+        print(e)
+        return jsonify({"status": "error", "message": "Unable to fetch cycle plan with id."}), 500        
+
+@app.route("/get-growboxIDs-from-username/<username>", methods=["GET"])
+def get_growboxIDs_from_username(username):
+    print(f"/get_growboxIDs_from_username is called with username {username}")
+    
+    try:
+        mapped_device_ids = list(
+            db[app.config["DATABASE_NAME_DEVICES"]].find({"device_id": {"$ne": username}}))
+
+        #print(f"/get_growboxIDs_from_username, result mapped_device_ids:")
+        #print(mapped_device_ids)
+        
+        deviceIDs = []
+        
+        for device in mapped_device_ids:
+            device_id = device['device_id']
+            status = 'connected' if device_id in connected_devices else 'disconnected'
+            print(f"/get_growboxIDs_from_username, found status for device with ID {device_id}, Status: {status}")
+            
+            deviceIDs.append({
+                'device_id': device_id,
+                'status': status
+            })
+
+        return jsonify({"status": "success", "data": deviceIDs}), 200
+    except Exception as e:
+        print(e)
+        return jsonify({"status": "error", "message": "Unable to fetch Device IDs."}), 500
 
 @app.route("/get-cycle-totaltime/<cycle_id>", methods=["GET"])
 def get_cycle_totaltime(cycle_id):
@@ -261,9 +346,6 @@ def get_cycle_totaltime(cycle_id):
     except Exception as e:
         print(e)
         return jsonify({"status": "error", "message": "Unable to fetch cycle total time."}), 500
-
-
-
 
 @app.route("/register", methods=["GET", "POST"])
 def register():

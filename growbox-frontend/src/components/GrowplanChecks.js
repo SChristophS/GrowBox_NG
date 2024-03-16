@@ -49,6 +49,7 @@ console.log("Temperature duration:", tempCycles.reduce((acc, cycle) => acc + cyc
 };
 
 const GrowplanChecks = ({ growData }) => {
+	console.log("GrowplanChecks: GrowplanChecks mit growData:", growData);
     const checks = calculateChecks(growData);
 
     return (
