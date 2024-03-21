@@ -1,0 +1,42 @@
+#include <ESP8266WiFi.h>
+
+const char* ssid = "SpatzNetz";
+const char* password = "Sandraundchristoph";
+const char* host = "192.168.178.95";
+const uint16_t port = 8085;
+
+WiFiClient client;
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("\nWiFi verbunden");
+  
+  if (!client.connect(host, port)) {
+    Serial.println("Verbindung fehlgeschlagen!");
+    return;
+  }
+
+  Serial.println("Verbunden mit dem Server!");
+}
+
+void loop() {
+  if (client.connected()) {
+    client.println("Hello from ESP8266!");
+    delay(2000); // Warte 2 Sekunden
+  } else {
+    Serial.println("Verbindung zum Server verloren. Versuche erneut...");
+    if (client.connect(host, port)) {
+      Serial.println("Wieder verbunden!");
+    } else {
+      Serial.println("Verbindung fehlgeschlagen.");
+    }
+    delay(5000); // Warte 5 Sekunden bevor der nächste Verbindungsversuch
+  }
+}

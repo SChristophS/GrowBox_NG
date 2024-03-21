@@ -1,29 +1,24 @@
 #include <ESP8266WiFi.h>
-
-#define MQTT_MAX_PACKET_SIZE 2048
 #include <PubSubClient.h>
-
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 
+// Konfiguration
 #define EEPROM_SIZE 2048
 #define DATA_START_ADDR 0
+#define JSON_BUFFER_SIZE 2048
 
-#define JSON_BUFFER_SIZE 2048 // Anpassen, falls nötig
-StaticJsonDocument<JSON_BUFFER_SIZE> doc;
-
-
-// WLAN settings
+// WLAN-Einstellungen
 const char* ssid = "SpatzNetz";
 const char* password = "Sandraundchristoph";
 
-// MQTT Settings
+// MQTT-Einstellungen
 const char* mqtt_server = "192.168.178.25";
 const int mqtt_port = 49154;
 const char* mqtt_username = "christoph";
 const char* mqtt_password = "Aprikose99";
 
-const long pingInterval = 10000; // Ping interval in milliseconds
+const long pingInterval = 10000; // Ping-Intervall in Millisekunden
 long lastPing = 0;
 
 String chipId;
@@ -31,11 +26,20 @@ String chipId;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+// Neuer TCP-Client für Backend-Verbindung
+WiFiClient backendClient;
+
+const char* backendHost = "192.168.178.95"; // Adresse deines Backends
+const int backendPort = 8085; // Neuer Port für Backend-Verbindung
+
+// Vorwärtsdeklarationen
+void connectToBackend();
+void sendSensorData();
+void processBackendCommand(String message);
+
 void setup_wifi() {
     delay(10);
-    // We start by connecting to a WiFi network
-    Serial.println();
-    Serial.print("Connecting to ");
+    Serial.println("\nConnecting to ");
     Serial.println(ssid);
 
     WiFi.begin(ssid, password);
@@ -45,24 +49,21 @@ void setup_wifi() {
         Serial.print(".");
     }
 
-    Serial.println("");
-    Serial.println("WiFi connected");
+    Serial.println("\nWiFi connected");
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 }
 
 void reconnect() {
+    // Achte darauf, dass das korrekte Topic abonniert wird
+    String socketConnectTopic = "growbox/" + chipId + "/SocketConnect";
     while (!client.connected()) {
         Serial.print("Attempting MQTT connection...");
         if (client.connect(chipId.c_str(), mqtt_username, mqtt_password)) {
             Serial.println("Connected");
-            // Verschiebe das Abonnieren hierher
-            String subscribeTopic = "growbox/" + chipId + "/newGrowplan";
-            // client.subscribe(subscribeTopic.c_str());
-            client.subscribe("growbox/1704975/newGrowplan");
-
+            client.subscribe(socketConnectTopic.c_str());
             Serial.print("Subscribed to: ");
-            Serial.println(subscribeTopic);
+            Serial.println(socketConnectTopic);
         } else {
             Serial.print("Failed, rc=");
             Serial.print(client.state());
@@ -71,89 +72,39 @@ void reconnect() {
         }
     }
 }
-
-
-// Funktion zum Speichern der Growplan-ID
-void saveGrowplanId(String id) {
-  EEPROM.begin(EEPROM_SIZE);
-for (unsigned int i = 0; i < id.length(); ++i) {
-    EEPROM.write(DATA_START_ADDR + i, id[i]);
-  }
-  EEPROM.commit();
-  EEPROM.end();
-}
-
-// Funktion zum Laden der Growplan-ID
-String loadGrowplanId() {
-  EEPROM.begin(EEPROM_SIZE);
-  String id = "";
-  for (int i = DATA_START_ADDR; i < DATA_START_ADDR + 32; ++i) { // Annahme: ID ist max. 32 Zeichen lang
-    char c = EEPROM.read(i);
-    if (c == 0) break;
-    id += c;
-  }
-  EEPROM.end();
-  return id;
-}
-
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Received message on topic: ");
-  Serial.println(topic);
+    Serial.print("Received message on topic: ");
+    Serial.println(topic);
 
-  String receivedPayload;
-  for (unsigned int i = 0; i < length; i++) {
-    receivedPayload += (char)payload[i];
-  }
-  Serial.print("Payload: ");
-  Serial.println(receivedPayload);
-
-  // Additional detailed logging
-  Serial.println("Trying to parse JSON...");
-  StaticJsonDocument<JSON_BUFFER_SIZE> doc;
-  DeserializationError error = deserializeJson(doc, receivedPayload);
-  if (error) {
-    Serial.print("deserializeJson() failed: ");
-    Serial.println(error.c_str());
-    return;
-  }
-
-  // Check if "planId" field exists
-  if (!doc.containsKey("planId")) {
-    Serial.println("Error: Missing 'planId' field in message!");
-    return;
-  }
-
-  String planId = doc["planId"];
-  Serial.print("Plan ID: ");
-  Serial.println(planId);
-
-  String currentPlanId = loadGrowplanId();
-  Serial.print("Current Plan ID: ");
-  Serial.println(currentPlanId);
-
-  if (planId != currentPlanId) {
-    Serial.println("New plan detected. Processing...");
-    saveGrowplanId(planId);
-  } else {
-    Serial.println("Received plan is the same as the current one. Ignoring...");
-  }
+    String topicStr = String(topic);
+    if (topicStr == "growbox/" + chipId + "/SocketConnect") {
+        Serial.println("SocketConnect-Nachricht erhalten. Verbinde mit Backend...");
+        if (!backendClient.connected()) {
+            connectToBackend();
+        }
+        return;
+    }
+    
+    // Hier weitere Verarbeitung deiner MQTT-Nachrichten
+    // Wenn es sich um Nachrichten handelt, die für andere Zwecke verarbeitet werden sollten,
+    // füge den entsprechenden Code hier ein.
 }
 
+void connectToBackend() {
+    if (!backendClient.connect(backendHost, backendPort)) {
+        Serial.println("Verbindung zum Backend fehlgeschlagen!");
+    } else {
+        Serial.println("Verbunden mit Backend!");
+        // Senden einer Begrüßungsnachricht oder ähnliches nach erfolgreicher Verbindung
+        backendClient.println("Hello from ESP8266");
+    }
+}
 
 void setup() {
     Serial.begin(115200);
     setup_wifi();
     chipId = String(ESP.getChipId());
-    Serial.print("chipId: ");
-    Serial.println(chipId);
-
     client.setCallback(mqttCallback);
-    // Stellen Sie sicher, dass der ESP8266 das korrekte Topic abonniert
-    String subscribeTopic = "growbox/" + chipId + "/newGrowplan";
-    client.subscribe(subscribeTopic.c_str());
-    Serial.print("subscribeTopic: ");
-    Serial.println(subscribeTopic.c_str());
-
     client.setServer(mqtt_server, mqtt_port);
     reconnect();
 }
@@ -164,14 +115,28 @@ void loop() {
     }
     client.loop();
 
+    // Überprüfung auf Daten vom Backend, wenn bereits verbunden
+    if (backendClient.connected()) {
+        if (backendClient.available()) {
+            String line = backendClient.readStringUntil('\n');
+            processBackendCommand(line);
+        }
+    } else {
+        // Hier könnten wir versuchen, die Verbindung erneut herzustellen, falls gewünscht.
+        // Zum Beispiel durch erneutes Senden der MQTT-Nachricht oder ähnliches.
+    }
+
     long now = millis();
     if (now - lastPing > pingInterval) {
-        // Time to send another ping
         lastPing = now;
-        Serial.println("publish alive message");
-
-        // Construct the full topic using chipId
+        Serial.println("Publish alive message");
         String fullTopic = "growbox/" + chipId + "/alive/";
-        client.publish(fullTopic.c_str(), "your_status_message");  // Replace with your actual status message
+        client.publish(fullTopic.c_str(), "your_status_message");
     }
+}
+
+void processBackendCommand(String message) {
+    // Implementiere die Logik, die ausgeführt werden soll, wenn eine Nachricht vom Backend empfangen wird.
+    Serial.print("Received from backend: ");
+    Serial.println(message);
 }
