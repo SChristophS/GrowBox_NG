@@ -107,31 +107,21 @@ def on_message(client, userdata, msg):
         device_timers[device_id] = threading.Timer(10.0, mark_device_as_disconnected, args=[device_id])
         device_timers[device_id].start()
 
-def send_growplan_to_growbox(device_id, grow_plan_data):
-  """
-  Sendet den Wachstumsplan an die Growbox mit der angegebenen ID.
+def send_request_to_growbox(device_id, grow_plan_data):
+    print(f"send_request_to_growbox with device_id: {device_id}")
+    message = json.dumps({"action": "connect_socket"})
+    topic = f"growbox/{device_id}/SocketConnect"
 
-  Args:
-      device_id (str): Die ID der Growbox.
-      grow_plan_data (dict): Das Wörterbuch mit den Daten des Wachstumsplans.
+    print(f"message: {message}")
+    print(f"Topic: {topic}")
+    
+    # Sende die MQTT-Nachricht
+    result, _ = mqtt_client.publish(topic, message)
+    
+    print(f"result code: {result}")
 
-  Returns:
-      None
-  """
-
-  if not device_id or not grow_plan_data:
-    return
-
-  # Erstellen der Topic-Zeichenkette
-  topic = f"growbox/{device_id}/newGrowplan"
-
-  # Serialisierung des Wachstumsplans in JSON
-  payload = json.dumps(grow_plan_data)
-
-  # Veröffentlichen der Nachricht
-  mqtt_client.publish(topic, payload)
-
-  print(f"Wachstumsplan an Growbox {device_id} gesendet.")
+    # Prüfe, ob der result code 0 ist, was Erfolg bedeutet
+    return result == 0
 
 
 mqtt_client.on_connect = on_connect
@@ -218,15 +208,17 @@ def save_grow_plan():
         print("Insert-Ergebnis:", result.inserted_id)  # Zeigt die ID des eingefügten Dokuments
         return jsonify({"message": "Grow plan insert successfully."}), 200
 
-@app.route("/transmit-grow-plan-to-target", methods=["POST"])
-def transmit_grow_plan_to_target():
-    print("transmit_grow_plan_to_target aufgerufen")
+@app.route("/ask-growbox-to-socket-connect", methods=["POST"])
+def ask_growbox_to_socket_connect():
+    print("Anfrage: Growbox soll Socketverbindung aufbauen")
     grow_plan_data = request.get_json()
     device_id = grow_plan_data['device_id']
-    print(f"Transmit Received Data to Device mit device_id: {device_id}")
+    print(f"Transmit request for connection to Device mit device_id: {device_id}")
 
-    send_growplan_to_growbox(device_id, grow_plan_data)
-    return jsonify({"message": "Transmit to target was successfully."}), 200
+    if send_request_to_growbox(device_id, grow_plan_data):
+        return jsonify({"message": "Request to connect via socket has been successfully transmitted."}), 200
+    else:
+        return jsonify({"message": "Failed to transmit the request."}), 500
   
 @app.route("/delete-grow-plan", methods=["DELETE"])
 def delete_grow_plan():

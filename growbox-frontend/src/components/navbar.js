@@ -113,8 +113,8 @@ const NavigationBar = () => {
 						}
 					</NavDropdown>
 		  
-					<Link to="/SendToGrowbox" className="nav-link" onClick={handleClose}>
-						Send to Growbox
+					<Link to="/Growbox" className="nav-link" onClick={handleClose}>
+						Growbox
 					</Link>
 		
 					<Link to="/analyse" className="nav-link" onClick={handleClose}>

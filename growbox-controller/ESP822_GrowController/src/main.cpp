@@ -95,10 +95,23 @@ void connectToBackend() {
         Serial.println("Verbindung zum Backend fehlgeschlagen!");
     } else {
         Serial.println("Verbunden mit Backend!");
-        // Senden einer Begrüßungsnachricht oder ähnliches nach erfolgreicher Verbindung
-        backendClient.println("Hello from ESP8266");
+
+        // Erstelle ein JSON-Objekt
+        StaticJsonDocument<JSON_BUFFER_SIZE> jsonDoc;
+        jsonDoc["chipId"] = chipId;
+        jsonDoc["message"] = "Hello from ESP8266";
+
+        // Konvertiere das JSON-Objekt in einen String
+        String jsonString;
+        serializeJson(jsonDoc, jsonString);
+
+        // Sende den JSON-String an das Backend
+        backendClient.print(jsonString + "\n"); // Füge den Zeilenumbruch direkt zum JSON-String hinzu
+
+        Serial.println("Nachricht an Backend gesendet: " + jsonString);
     }
 }
+
 
 void setup() {
     Serial.begin(115200);
