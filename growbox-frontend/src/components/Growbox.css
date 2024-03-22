@@ -1,0 +1,37 @@
+.matrix-style {
+    background-color: #000;
+    color: #0f0;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+.devices-container {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.device {
+    width: 150px;
+    margin: 10px;
+    padding: 10px;
+    border: 1px solid #0f0;
+    cursor: pointer;
+}
+
+.messages-display {
+    margin-top: 20px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.messages-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.message {
+    background-color: #f0f0f0;
+    margin-bottom: 10px;
+    padding: 5px;
+    border-radius: 5px;
+}

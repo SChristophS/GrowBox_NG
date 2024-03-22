@@ -38,7 +38,7 @@ users = db["users"]
 mqtt_username = "christoph"
 mqtt_password = "Aprikose99"
 
-           
+
 
 # MQTT client
 mqtt_client = mqtt.Client()
@@ -48,6 +48,20 @@ mqtt_client.username_pw_set(mqtt_username, mqtt_password)
 connected_devices = {}
 device_timers = {}
 
+def check_client_status():
+    current_time = time.time()
+    timeout = 15  # 15 Sekunden
+    for client_key, client_info in list(connected_devices.items()):
+        if current_time - client_info["last_seen"] > timeout:
+            print(f"{client_key} ist offline.")
+            # Entferne den Client aus der Liste oder markiere ihn als offline
+            del connected_devices[client_key]
+
+def start_status_check():
+    while True:
+        check_client_status()
+        time.sleep(5)  # Warte 5 Sekunden zwischen den Überprüfungen
+        
 def mark_device_as_disconnected(device_id):
     if device_id in connected_devices:
         del connected_devices[device_id]
@@ -55,8 +69,9 @@ def mark_device_as_disconnected(device_id):
 
 def send_alive_messages():
     while True:
-        mqtt_client.publish("growbox/alive", "I am alive")
-        time.sleep(5)
+        #mqtt_client.publish("growbox/Backend/alive", "I am alive")
+        #time.sleep(5)
+        print("send_alive_message deaktiviert")
         
 def on_disconnect(client, userdata, rc):
     print("Disconnected with result code "+str(rc))
@@ -68,6 +83,8 @@ def on_disconnect(client, userdata, rc):
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected successfully.")
+        # Abonniere das generische Topic für Alive-Nachrichten
+        client.subscribe("growbox/+/alive")
     else:
         print(f"Connection failed with error code {rc}")
         
@@ -76,17 +93,15 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("growbox/status")
 
 def on_message(client, userdata, msg):
-    print(f"{msg.topic} {str(msg.payload)}")
+    #print(f"{msg.topic} {str(msg.payload)}")
     device_id = msg.payload.decode()
     print(f"device_id:{device_id}")
-
-    if msg.topic == "growbox/status":
-        print(f"message.topic is status")
-        # Query the database to get the owner of the device
-        #device = db["devices"].find_one({"device_id": device_id})
-
+    
+    if device_id:
+        print(f"message.topic is alive")
         device = db[app.config["DEVICES"]].find_one({"device_id": device_id})
         print(device)
+        
         if device:
             username = device["username"]
             if device_id in connected_devices:
@@ -405,8 +420,12 @@ def get_devices():
 
 if __name__ == "__main__":
 
-    alive_thread = threading.Thread(target=send_alive_messages)
-    alive_thread.start()
+    #alive_thread = threading.Thread(target=send_alive_messages)
+    #alive_thread.start()
+    
+    # Starte einen Hintergrund-Thread, der diese Funktion regelmäßig aufruft
+    status_check_thread = threading.Thread(target=start_status_check)
+    status_check_thread.start()    
     
     mqtt_client.loop_start()  # start the MQTT background thread
     app.run(host='0.0.0.0', port=5000, debug=True)
