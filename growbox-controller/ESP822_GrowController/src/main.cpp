@@ -2,11 +2,9 @@
 #include <PubSubClient.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
+#include <ArduinoWebsockets.h>
 
-// Konfiguration
-#define EEPROM_SIZE 2048
-#define DATA_START_ADDR 0
-#define JSON_BUFFER_SIZE 2048
+using namespace websockets;
 
 // WLAN-Einstellungen
 const char* ssid = "SpatzNetz";
@@ -18,24 +16,30 @@ const int mqtt_port = 49154;
 const char* mqtt_username = "christoph";
 const char* mqtt_password = "Aprikose99";
 
-const long pingInterval = 10000; // Ping-Intervall in Millisekunden
-long lastPing = 0;
+// WebSocket
+const char* SocketServerHost = "192.168.178.95";
+const int SocketServerPort = 8085;
+
+// Neue Variablen für die zyklische Alive-Nachricht
+unsigned long lastAliveMessage = 0; // Letzter Zeitpunkt, zu dem eine Alive-Nachricht gesendet wurde
+const long aliveInterval = 10000; // Interval in Millisekunden für Alive-Nachrichten
+bool shouldConnectWebSocket = false; // Flag, das bestimmt, ob eine WebSocket-Verbindung hergestellt werden soll
+bool isWebSocketConnected = false;
 
 String chipId;
-
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient mqttClient(espClient);
+WebsocketsClient websocketsClient;
 
-// Neuer TCP-Client für Backend-Verbindung
-WiFiClient backendClient;
 
-const char* backendHost = "192.168.178.95"; // Adresse deines Backends
-const int backendPort = 8085; // Neuer Port für Backend-Verbindung
 
-// Vorwärtsdeklarationen
+// Vorwärtsdeklarationen von Funktionen
 void connectToBackend();
 void sendSensorData();
 void processBackendCommand(String message);
+void setup_wifi();
+void reconnect();
+void mqttCallback(char* topic, byte* payload, unsigned int length);
 
 void setup_wifi() {
     delay(10);
@@ -57,16 +61,16 @@ void setup_wifi() {
 void reconnect() {
     // Achte darauf, dass das korrekte Topic abonniert wird
     String socketConnectTopic = "growbox/" + chipId + "/SocketConnect";
-    while (!client.connected()) {
+    while (!mqttClient.connected()) {
         Serial.print("Attempting MQTT connection...");
-        if (client.connect(chipId.c_str(), mqtt_username, mqtt_password)) {
+        if (mqttClient.connect(chipId.c_str(), mqtt_username, mqtt_password)) {
             Serial.println("Connected");
-            client.subscribe(socketConnectTopic.c_str());
+            mqttClient.subscribe(socketConnectTopic.c_str());
             Serial.print("Subscribed to: ");
             Serial.println(socketConnectTopic);
         } else {
             Serial.print("Failed, rc=");
-            Serial.print(client.state());
+            Serial.print(mqttClient.state());
             Serial.println(" try again in 5 seconds");
             delay(5000);
         }
@@ -79,9 +83,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     String topicStr = String(topic);
     if (topicStr == "growbox/" + chipId + "/SocketConnect") {
         Serial.println("SocketConnect-Nachricht erhalten. Verbinde mit Backend...");
-        if (!backendClient.connected()) {
-            connectToBackend();
-        }
+        shouldConnectWebSocket = true; // Setze das Flag, um eine WebSocket-Verbindung herzustellen
+        
         return;
     }
     
@@ -90,66 +93,144 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     // füge den entsprechenden Code hier ein.
 }
 
+void onEventsCallback(WebsocketsEvent event, String data) {
+    switch (event) {
+        case WebsocketsEvent::ConnectionOpened:
+            Serial.println("Event: Connection Opened");
+            isWebSocketConnected = true;
+            break;
+        case WebsocketsEvent::ConnectionClosed:
+            Serial.println("Event: Connection Closed");
+            isWebSocketConnected = false;
+            break;
+        case WebsocketsEvent::GotPing:
+            Serial.println("Event: Got Ping");
+            break;
+        case WebsocketsEvent::GotPong:
+            Serial.println("Event: Got Pong");
+            break;
+        default:
+            Serial.println("Hier ist etwas schief gegangen");
+            break;
+    }
+}
+
+
+void onMessageCallback(WebsocketsMessage message) {
+  Serial.print("Got Message: ");
+  Serial.println(message.data());
+
+  // Parse die JSON-Nachricht
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, message.data());
+
+  // Überprüfe, ob das Parsen erfolgreich war
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // Extrahiere die Daten
+  const char* device = doc["device"]; // "Frontend"
+  const char* chipId = doc["chipId"]; // z.B. "1700768"
+  const char* msg = doc["message"];   // "CustomAction"
+  const char* action = doc["action"]; // "toggleLight"
+
+        Serial.println("device:");
+        Serial.println(device);
+        Serial.println("chipId:");
+        Serial.println(chipId);
+        Serial.println("msg:");
+        Serial.println(msg);
+        Serial.println("action:");
+        Serial.println(action);
+
+  if (strcmp(msg, "test_message") == 0) {
+        Serial.println("test_message erkannt:");
+
+        // Erstelle und sende die Alive-Nachricht über WebSocket
+        StaticJsonDocument<256> doc;
+        doc["device"] = "controller";
+        doc["chipId"] = chipId;
+        doc["message"] = "DingDong deine Ehre is gone";
+        String message;
+        serializeJson(doc, message);
+        websocketsClient.send(message);
+        Serial.println("Nachricht über WebSocket gesendet");
+
+  }
+}
+
+
 void connectToBackend() {
-    if (!backendClient.connect(backendHost, backendPort)) {
-        Serial.println("Verbindung zum Backend fehlgeschlagen!");
-    } else {
-        Serial.println("Verbunden mit Backend!");
+    Serial.println("connectToBackend");
+    String wsUrl = "ws://" + String(SocketServerHost) + ":" + String(SocketServerPort);
 
-        // Erstelle ein JSON-Objekt
-        StaticJsonDocument<JSON_BUFFER_SIZE> jsonDoc;
-        jsonDoc["chipId"] = chipId;
-        jsonDoc["message"] = "Hello from ESP8266";
-
-        // Konvertiere das JSON-Objekt in einen String
-        String jsonString;
-        serializeJson(jsonDoc, jsonString);
-
-        // Sende den JSON-String an das Backend
-        backendClient.print(jsonString + "\n"); // Füge den Zeilenumbruch direkt zum JSON-String hinzu
-
-        Serial.println("Nachricht an Backend gesendet: " + jsonString);
-    }
-}
-
-
-void setup() {
-    Serial.begin(115200);
-    setup_wifi();
-    chipId = String(ESP.getChipId());
-    client.setCallback(mqttCallback);
-    client.setServer(mqtt_server, mqtt_port);
-    reconnect();
-}
-
-void loop() {
-    if (!client.connected()) {
-        reconnect();
-    }
-    client.loop();
-
-    // Überprüfung auf Daten vom Backend, wenn bereits verbunden
-    if (backendClient.connected()) {
-        if (backendClient.available()) {
-            String line = backendClient.readStringUntil('\n');
-            processBackendCommand(line);
-        }
-    } else {
-        // Hier könnten wir versuchen, die Verbindung erneut herzustellen, falls gewünscht.
-        // Zum Beispiel durch erneutes Senden der MQTT-Nachricht oder ähnliches.
-    }
-
-    long now = millis();
-    if (now - lastPing > pingInterval) {
-        lastPing = now;
-        Serial.println("Publish alive message");
-        String fullTopic = "growbox/" + chipId + "/alive/";
-        client.publish(fullTopic.c_str(), "your_status_message");
-    }
+    websocketsClient.onEvent(onEventsCallback);
+    websocketsClient.onMessage(onMessageCallback);
+    websocketsClient.connect(wsUrl);
+    // Du kannst hier prüfen, ob isWebSocketConnected true gesetzt wird,
+    // aber beachte, dass connect() asynchron ist.
 }
 
 void processBackendCommand(String message) {
     // Implementiere die Logik, die ausgeführt werden soll, wenn eine Nachricht vom Backend empfangen wird.
     Serial.print("Received from backend: ");
     Serial.println(message);
+}
+
+
+
+
+void setup() {
+    Serial.begin(115200);
+    setup_wifi();
+    chipId = String(ESP.getChipId());
+    mqttClient.setCallback(mqttCallback);
+    mqttClient.setServer(mqtt_server, mqtt_port);
+    reconnect();
+}
+
+void loop() {
+    if (!mqttClient.connected()) {
+        reconnect();
+        Serial.println("reconnect();");
+    }
+    mqttClient.loop();
+
+    if (isWebSocketConnected) {
+        websocketsClient.poll();
+    }
+
+    if (shouldConnectWebSocket && !isWebSocketConnected) {
+        connectToBackend();
+        Serial.println("websocketsClient.poll();");
+    }
+
+    unsigned long now = millis();
+    
+    if (now - lastAliveMessage > aliveInterval) {
+        lastAliveMessage = now;
+
+        Serial.println("Publish alive message");
+        String fullTopic = "growbox/" + chipId + "/alive";
+        mqttClient.publish(fullTopic.c_str(), chipId.c_str());
+
+        if (isWebSocketConnected) {
+            // Polling erfolgt hier implizit durch das Verarbeiten von eingehenden Nachrichten oder anderen Aktionen.
+            // Falls notwendig, können hier weitere Aktionen hinzugefügt werden, z.B.:
+                
+            
+                // Erstelle und sende die Alive-Nachricht über WebSocket
+                StaticJsonDocument<256> doc;
+                doc["device"] = "controller";
+                doc["chipId"] = chipId;
+                doc["message"] = "alive";
+                String message;
+                serializeJson(doc, message);
+                websocketsClient.send(message);
+                Serial.println("Alive-Nachricht über WebSocket gesendet");
+            }
+    }
 }
