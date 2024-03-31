@@ -1,52 +1,63 @@
 import asyncio
 import websockets
 import json
+from typing import Dict, Optional, Tuple
 
-connected_clients = {}
+ClientInfo = Tuple[str, str]
+ConnectedClients = Dict[str, websockets.WebSocketServerProtocol]
 
-async def handler(websocket, path):
+connected_clients: ConnectedClients = {}
+
+
+async def handler(websocket: websockets.WebSocketServerProtocol, path: str):
     global connected_clients
-    client_info = None  # Speichert chipId und device_type des aktuellen WebSockets
-    try:
-        async for message in websocket:
-            print(f"Raw message: {message}")
-            try:
-                data = json.loads(message)
-            except json.JSONDecodeError:
-                print(f"Invalid JSON: {message}")
-                continue
+    client_key: Optional[str] = None
 
-            chipId = data.get("chipId")
-            device_type = data.get("device")
+    async for message in websocket:
+        # Weiterleiten der Nachricht an andere Clients
+        for target_key, target_websocket in connected_clients.items():
+            if target_key != client_key:
+                print(f"Forwarding message: {message}")
+                await target_websocket.send(message)
 
-            if chipId and device_type:
+        try:
+            print(f"Received raw message: {message}")
+            data = json.loads(message)
+
+            # Überprüfen und Verarbeiten der Registrierungsnachricht
+            if data.get("message") == "register":
+                chipId = data.get("chipId", "000000")
+                device_type = data.get("device", "unknown")
                 client_key = f"{chipId}-{device_type}"
-                if client_key not in connected_clients:  # Überprüfe, ob der Client bereits verbunden ist
+
+                if client_key not in connected_clients:
                     connected_clients[client_key] = websocket
-                    client_info = (chipId, device_type)  # Speichere Client-Info für Disconnect-Handling
-                    print(f"{device_type} with chipId {chipId} connected and added to connected clients.")
+                    print(f"Registered: {device_type} with chipId {chipId} added.")
                 else:
-                    print(f"{device_type} with chipId {chipId} is already connected.")
+                    print(f"Duplicate: {device_type} with chipId {chipId} already connected.")
+                continue  # Weiter mit der nächsten Nachricht
 
-            # Weiterleitung der Nachricht an verbundene Clients
-            target_device = "controller" if device_type == "Frontend" else "Frontend"
-            target_key = f"{chipId}-{target_device}"
-            if target_key in connected_clients:
-                # Senden der Nachricht an das verbundene Gerät
-                await connected_clients[target_key].send(message)
-                print(f"Message from {device_type} forwarded to {target_device}.")
+        except json.JSONDecodeError:
+            print(f"Invalid JSON: {message}")
+            continue
+        except Exception as e:
+            print(f"Unexpected error: {str(e)}")
+            continue
 
-    except websockets.exceptions.ConnectionClosed:
-        print("A connection was closed")
-        if client_info:
-            client_key = f"{client_info[0]}-{client_info[1]}"
-            if client_key in connected_clients:
-                connected_clients.pop(client_key, None)  # Entferne die geschlossene Verbindung
-                print(f"{client_info[1]} with chipId {client_info[0]} disconnected and removed from connected clients.")
+
+
+
+    # Verbindung wurde geschlossen
+    if client_key and client_key in connected_clients:
+        del connected_clients[client_key]
+        print(f"Disconnected: {client_key} removed.")
+
 
 async def main():
     async with websockets.serve(handler, "0.0.0.0", 8085):
+        print("WebSocket server started on ws://0.0.0.0:8085")
         await asyncio.Future()  # Runs forever
+
 
 if __name__ == "__main__":
     asyncio.run(main())
