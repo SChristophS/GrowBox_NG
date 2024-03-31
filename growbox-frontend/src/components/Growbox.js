@@ -28,23 +28,41 @@ function Growbox() {
         }
     };
 	
-	const sendMessageOverWebSocket = () => {
+const sendMessageOverWebSocket = (actionContent, messageContent) => {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const message = JSON.stringify({
+            device: "Frontend",
+            chipId: selectedDeviceId,
+            action: actionContent, // Parameter verwendet
+            message: messageContent    // Parameter verwendet
+        });
+        websocket.send(message);
+        console.log("Nachricht gesendet:", message);
+    }
+};
+
+	
+	const sendRegisterMsgToWebSocket = () => {
+		console.log("sendRegisterMsgToWebSocket:");
 		  if (websocket && websocket.readyState === WebSocket.OPEN) {
-				const message = JSON.stringify({
+				const register_message = JSON.stringify({
 					device: "Frontend",
 					chipId: selectedDeviceId,
-					message: "test_message",
-					action: "test_action"  // Beispielaktion
+					message: "register",
 				});
-				websocket.send(message);
-				console.log("Nachricht gesendet:", message);
+				websocket.send(register_message);
+				console.log("Nachricht gesendet:", register_message);
 		  }
 	};
 
 
 const initiateWebSocketConnection = (wsUrl) => {
     const ws = new WebSocket('ws://localhost:8085');
-    ws.onopen = () => console.log("WebSocket connection established");
+    ws.onopen = () => {
+		console.log("WebSocket connection established");
+		sendRegisterMsgToWebSocket();
+	}
+	
 	ws.onmessage = (message) => {
 		console.log("Empfangene Nachricht: ", message.data);
 		setMessages(prevMessages => {
@@ -54,6 +72,9 @@ const initiateWebSocketConnection = (wsUrl) => {
 		});
 	};
     setWebsocket(ws);
+	
+	
+	
 };
 
 	useEffect(() => {
@@ -129,10 +150,25 @@ const initiateWebSocketConnection = (wsUrl) => {
                 </Modal.Footer>
             </Modal>
 			
-			<Button variant="primary" onClick={() => sendMessageOverWebSocket()}>
-				Nachricht senden
+			<Button variant="primary" onClick={() => sendMessageOverWebSocket("live", "activate")}>
+				Live-Data Aktivieren
 			</Button>
-
+			
+			<Button variant="primary" onClick={() => sendMessageOverWebSocket("live", "deactivate")}>
+				Live-Data deaktivieren
+			</Button>			
+			
+			<Button variant="primary" onClick={() => sendMessageOverWebSocket("new_growplan", "HierderNeueGrowplandannalsjson")}>
+				New Growplan
+			</Button>
+			
+			<Button variant="primary" onClick={() => sendMessageOverWebSocket("control", "becken_voll")}>
+				Becken voll
+			</Button>
+			
+			<Button variant="primary" onClick={() => sendMessageOverWebSocket("control", "becken_leer")}>
+				Becken leer
+			</Button>
 			
 			
 			{/* Nachrichtenanzeige */}
