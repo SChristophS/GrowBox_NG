@@ -1,0 +1,51 @@
+{
+  "_id": {
+    "$oid": "64550e4e8408b864cd1df9a7"
+  },
+  "username": "christoph",
+  "growCycleName": "Zyklus_12h",
+  "description": "Testzyklus 12h",
+  "sharingStatus": "public",
+  "growData": {
+    "totalGrowTime": 720,
+    "startFromHere" :16,
+    "ledCycles": [
+      {
+        "durationOn": 5,
+        "durationOff": 5,
+        "ledRepetitions": 2
+      },
+      {
+        "durationOn": 2,
+        "durationOff": 3,
+        "ledRepetitions": 2
+      }
+    ],
+    "tempCycles": [
+      {
+        "temperature1": 20,
+        "duration1": 700
+      },
+      {
+        "temperature1": 30,
+        "duration1": 20
+      }
+    ],
+    "wateringCycles": [
+      {
+        "status1": "full",
+        "duration1": 300,
+        "status2": "empty",
+        "duration2": 300,
+        "waterRepetitions": 1
+      },
+      {
+        "status1": "full",
+        "duration1": 60,
+        "status2": "empty",
+        "duration2": 60,
+        "waterRepetitions": 1
+      }
+    ]
+  }
+}

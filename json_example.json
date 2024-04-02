@@ -8,6 +8,7 @@
   "sharingStatus": "public",
   "growData": {
     "totalGrowTime": 720,
+    "startFromHere": 0,
     "ledCycles": [
       {
         "durationOn": 30,
