@@ -2,22 +2,40 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build with cl.exe",
-            "type": "shell",
-            "command": "cl.exe",
+            "type": "cppbuild",
+            "label": "C/C++: g++.exe build active file",
+            "command": "C:\\msys64\\mingw64\\bin\\g++.exe",
             "args": [
-                "/Zi",
-                "/EHsc",
-                "/Fe:",
-                "${fileDirname}\\${fileBasenameNoExtension}.exe",
-                "${file}"
+                "-fdiagnostics-color=always",
+                "-g",
+                "${file}",
+                "${workspaceFolder}/Globals.cpp",
+                "-o",
+                "${fileDirname}\\${fileBasenameNoExtension}.exe"
             ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "build",
+            "detail": "compiler: C:\\msys64\\mingw64\\bin\\g++.exe"
+        },
+        {
+            "label": "Run C++ program",
+            "type": "shell",
+            "command": "${workspaceFolder}/main.exe",
+            "dependsOn": "Build C++ project",
             "group": {
-                "kind": "build",
+                "kind": "test",
                 "isDefault": true
             },
-            "problemMatcher": ["$msCompile"],
-            "detail": "Compiler: cl.exe"
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
         }
     ]
 }

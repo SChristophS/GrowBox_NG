@@ -1,3 +1,4 @@
+#include <thread>
 #include <fstream>
 #include <iostream>
 #include "Cycle.h"
@@ -34,12 +35,10 @@ void parseAndExecute(const std::string& filePath) {
 int main() {
     parseAndExecute("json_example.json");
 
-    if (LedStatus) {
-        // Logik, wenn LED an ist
-        std::cout << "LED AN" << std::endl;
+    if (LedStatus){
+        std::cout << "LED Status ist true: " << LedStatus << std::endl;
     } else {
-        // Logik, wenn LED aus ist
-        std::cout << "LED AUS" << std::endl;
+        std::cout << "LED Status ist false: " << LedStatus << std::endl;
     }
 
     return 0;
