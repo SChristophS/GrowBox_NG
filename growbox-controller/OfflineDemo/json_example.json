@@ -8,17 +8,17 @@
   "sharingStatus": "public",
   "growData": {
     "totalGrowTime": 720,
-    "startFromHere": 0,
+    "startFromHere" :16,
     "ledCycles": [
       {
-        "durationOn": 30,
-        "durationOff": 30,
+        "durationOn": 5,
+        "durationOff": 5,
         "ledRepetitions": 2
       },
       {
-        "durationOn": 60,
-        "durationOff": 60,
-        "ledRepetitions": 5
+        "durationOn": 2,
+        "durationOff": 3,
+        "ledRepetitions": 2
       }
     ],
     "tempCycles": [
