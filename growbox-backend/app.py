@@ -298,8 +298,13 @@ def get_cycle_plans(username):
         
 @app.route("/get-cycle-plan-from-id/<id>", methods=["GET"])
 def get_cycle_plan(id):
+    print("get-cycle-plan-from-id aufgerufen mit id: " + id)
+    
+    # Entfernen Sie alles nach dem Bindestrich in der ID
+    sanitized_cycle_id = id.split('-')[0]
+        
     try:
-        cycle_plan = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find_one({"_id": ObjectId(id)})
+        cycle_plan = db[app.config["DATABASE_NAME_CYCLE_PLANS"]].find_one({"_id": ObjectId(sanitized_cycle_id)})
         print(cycle_plan)
         
         cycle_plan_json = json_util.dumps(cycle_plan)
