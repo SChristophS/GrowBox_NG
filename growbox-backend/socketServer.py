@@ -75,7 +75,8 @@ async def handler(websocket: websockets.WebSocketServerProtocol, path: str):
                 for target_key, target_websocket in connected_clients.items():
                     if target_key.startswith(f"{chipId}-controller"):  # Achten Sie darauf, dass dies mit Ihrer Benennungskonvention übereinstimmt
                         await target_websocket.send(new_message_structure)  # Senden der neu strukturierten Nachricht
-                        targets_sent_to.append(target_key)
+                        new_message_structure
+                        print(f"[DEBUG] Sent growplan: {new_message_structure}")
                 print(f"[DEBUG] Sent growplan to: {targets_sent_to}")
                 
     except websockets.exceptions.ConnectionClosedError:

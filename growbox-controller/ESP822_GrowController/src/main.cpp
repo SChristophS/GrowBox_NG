@@ -3,8 +3,12 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <ArduinoWebsockets.h>
+#include "Cycle.h"
+#include "..\include\json.hpp"
+#include "Globals.h"
 
 using namespace websockets;
+using json = nlohmann::json;
 
 // WLAN-Einstellungen
 const char* ssid = "SpatzNetz";
@@ -153,99 +157,54 @@ void onEventsCallback(WebsocketsEvent event, String data) {
     }
 }
 
-const char* getOrDefault(ArduinoJson::JsonDocument& doc, const char* key, const char* defaultValue) {
-    /*
-    Um dieses Problem zu beheben, können Sie stattdessen eine Hilfsfunktion verwenden, die überprüft, 
-    ob der Schlüssel existiert und dann entweder den Wert aus dem JsonDocument oder einen Standardwert zurückgibt. 
-    Diese Funktion kann das Problem mit dem unterschiedlichen Typen lösen, indem sie sicherstellt, 
-    dass immer ein const char* zurückgegeben wird.
-
-    */
-    if (doc.containsKey(key)) {
-        // Wir nutzen as<const char*>(), um sicherzustellen, dass der Typ passt.
-        const char* value = doc[key].as<const char*>();
-        if (value) {
-            return value;
-        }
-    }
-    return defaultValue;
-}
 
 void onMessageCallback(WebsocketsMessage message) {
-  Serial.println("WebSocketMessage: ");
-  Serial.println(message.data());
-
-  // Parse die JSON-Nachricht
-  StaticJsonDocument<1024> doc;
-  DeserializationError error = deserializeJson(doc, message.data());
-
-  // Überprüfe, ob das Parsen erfolgreich war
-  if (error) {
-    Serial.print(F("deserializeJson() failed: "));
-    Serial.println(error.c_str());
-    return;
-  } else {
-    Serial.print(F("Message erfolgreich deresialzed"));
-  }
-
     Serial.println("WebSocketMessage: ");
     Serial.println(message.data());
 
-    const char* SocketMsg_device = getOrDefault(doc, "device", "defaultDevice");
-    const char* SocketMsg_chipId = getOrDefault(doc, "chipId", "defaultChipId");
-    const char* SocketMsg_action = getOrDefault(doc, "action", "defaultAction");
-    const char* SocketMsg_message = getOrDefault(doc, "message", "defaultMessage");
+    StaticJsonDocument<4096> doc;
+    DeserializationError error = deserializeJson(doc, message.data());
 
-    // Nutze debugPrint, um eine Nachricht auszugeben, wenn Werte fehlen
-    if (strcmp(SocketMsg_device, "defaultDevice") == 0) {
-        debugPrint(DEBUG_WARN, "Warnung: 'device' fehlt in der Nachricht.");
+    if (error) {
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.c_str());
+        return;
     }
-    if (strcmp(SocketMsg_chipId, "defaultChipId") == 0) {
-        debugPrint(DEBUG_WARN, "Warnung: 'chipId' fehlt in der Nachricht.");
-    }
-    if (strcmp(SocketMsg_action, "defaultAction") == 0) {
-        debugPrint(DEBUG_WARN, "Warnung: 'action' fehlt in der Nachricht.");
-    }
+    Serial.println(F("deserializeJson erfolgreich"));
 
-    // Debug-Nachrichten ausgeben (oder weiterverarbeiten)
-    debugPrint(DEBUG_INFO, String("device: ") + SocketMsg_device);
-    debugPrint(DEBUG_INFO, String("chipId: ") + SocketMsg_chipId);
-    debugPrint(DEBUG_INFO, String("action: ") + SocketMsg_action);
+    // Prüfe, ob es sich um eine Nachricht mit "growData" handelt
+    if (doc.containsKey("message") && doc["message"].is<JsonObject>()) {
+        JsonObject msgObj = doc["message"].as<JsonObject>();
+        if (msgObj.containsKey("growData") && msgObj["growData"].is<JsonObject>()) {
+            JsonObject growData = msgObj["growData"].as<JsonObject>();
 
-    // new Growplan
-    if (strcmp(SocketMsg_action, "new_growplan") == 0) {
-        Serial.println("New Growplan from Frontend Received");
+            // Hier können Sie auf die Daten innerhalb von "growData" zugreifen
+            int startFromHere = growData["startFromHere"]; // Beispielzugriff auf "startFromHere"
+            Serial.print("Start From Here: ");
+            Serial.println(startFromHere);
 
-        Serial.println("SocketMsg_growPlan:");
-        Serial.println(SocketMsg_message);
-    }
-
-    // control 
-    if (strcmp(SocketMsg_action, "control") == 0) {
-        Serial.println("Frontend overtake control");
-
-        Serial.println("SocketMsg_control:");
-        Serial.println(SocketMsg_message);
-    }
-
-    // live-Data
-    if (strcmp(SocketMsg_action, "live") == 0) {
-
-        if (strcmp(SocketMsg_message, "activate") == 0) 
-        {
-            Serial.println("activate live data");
-            liveDataViaSocketActive = true;
-
-        } else if (strcmp(SocketMsg_message, "deactivate") == 0)
-        {
-            Serial.println("deactivate live data");
-            liveDataViaSocketActive = false;
-            
-        } else {
-            Serial.println("Error in SocketMsg_action live - compare failed");
+            // Beispiel, wie Sie auf ein Array innerhalb von growData zugreifen könnten
+            if (growData.containsKey("ledCycles") && growData["ledCycles"].is<JsonArray>()) {
+                JsonArray ledCycles = growData["ledCycles"].as<JsonArray>();
+                for (JsonObject ledCycle : ledCycles) {
+                    int durationOn = ledCycle["durationOn"];
+                    int durationOff = ledCycle["durationOff"];
+                    int ledRepetitions = ledCycle["ledRepetitions"];
+                    // Führen Sie hier Aktionen mit den LED-Zyklus-Daten aus
+                    Serial.print("LED Cycle: On ");
+                    Serial.print(durationOn);
+                    Serial.print("s, Off ");
+                    Serial.print(durationOff);
+                    Serial.print("s, Repetitions ");
+                    Serial.println(ledRepetitions);
+                }
+            }
         }
     }
 }
+
+
+
 
 void sendLiveDataToSocketBackend(){
         // Erstelle und sende die Alive-Nachricht über WebSocket
