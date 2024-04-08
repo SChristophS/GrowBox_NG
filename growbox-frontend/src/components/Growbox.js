@@ -147,19 +147,7 @@ function Growbox() {
         setShowModal(true);
     };
 	
-	const sendMessageOverWebSocket = (actionContent, messageContent) => {
-		if (websocket && websocket.readyState === WebSocket.OPEN) {
-			const message = JSON.stringify({
-				device: "Frontend",
-				chipId: selectedDeviceId,
-				action: actionContent, // Parameter verwendet
-				message: messageContent    // Parameter verwendet
-			});
-			websocket.send(message);
-			console.log("fetchDevices: Nachricht via Socket gesendet");
-			console.log("fetchDevices: Nachricht: ", message);
-		}
-	};
+
 	
 	const AskControllerToConnect = (event) => {
 		// Stoppen des Event-Bubblings
@@ -188,19 +176,6 @@ function Growbox() {
 		  console.error('Fehler:', error);
 		});
 	};
-
-	const sendNewGrowPlan = (deviceId) => {
-    if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
-        const message = JSON.stringify({
-            device: "Frontend",
-            chipId: deviceId,
-            action: "send_new_growplan",
-            message: "Hier könnte der Inhalt des neuen Growplans stehen"
-        });
-        websocketRef.current.send(message);
-        console.log("Nachricht zum Senden eines neuen Growplans gesendet:", message);
-    }
-};
 
 	async function getCompleteGrowPlans() {
 	  // Iteriere über alle growPlans und transformiere jedes Element in ein Promise, 
@@ -239,6 +214,28 @@ function Growbox() {
 		document.body.appendChild(link);
 		link.click();
 		document.body.removeChild(link);
+	};
+
+	const sendCommandToGrowbox = async (deviceID, action) => {
+		console.log("sendCommandToGrowbox: function call");
+		console.log("action: " + action);
+
+			
+		// Überprüfen, ob die WebSocket-Verbindung offen ist
+		if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+			// Nachricht zum Senden der Growplan-Daten vorbereiten
+			const message = JSON.stringify({
+				device: "Frontend",
+				chipId: deviceID, // Stellen Sie sicher, dass selectedDeviceId korrekt gesetzt ist
+				action: action
+			});
+			
+			// Senden der Nachricht
+			websocketRef.current.send(message);
+			console.log("sendMessageToGrowbox: Nachricht gesendet:", message);
+		} else {
+			console.error("WebSocket-Verbindung ist nicht offen.");
+		}
 	};
 
 	const sendGrowPlanToGrowbox = async (selectedGrowPlan) => {
@@ -324,14 +321,22 @@ function Growbox() {
 		.catch(error => console.error("Fehler bei der Verarbeitung der GrowCycle-Daten", error));
 	};
 
+
+    // Event-Handler für den "Run"-Button
+    const handleRunClick = (deviceId, event) => {
+        event.stopPropagation(); // Verhindern, dass das Klick-Event zum Geräte-Container-Element durchdringt
+        sendCommandToGrowbox(deviceId, "startGrow");
+    };
+
+    // Event-Handler für den "Stop"-Button
+    const handleStopClick = (deviceId, event) => {
+        event.stopPropagation(); // Verhindern, dass das Klick-Event zum Geräte-Container-Element durchdringt
+        sendCommandToGrowbox(deviceId, "stopGrow");
+    };
 	
     return (
         <div>
             <h1>Growboxen</h1>
-			
-			
-			
-			
 			
 			
 			
@@ -347,8 +352,10 @@ function Growbox() {
 						>
 							Request Controller Socket Connection
 						</Button></p>
+						
 						<p>Frontend to Socket <span className={`status-dot ${device.isConnected ? 'connected' : 'disconnected'}`}></span></p>
 						<p>Controller to Socket <span className={`status-dot ${device.controllerAlive ? 'connected' : 'disconnected'}`}></span></p>
+						<p>Growprogram is running <span className={`status-dot ${device.controllerRunning ? 'running' : 'notRunning'}`}></span></p>
 						
 						
 						<Button
@@ -363,9 +370,9 @@ function Growbox() {
 							Growplan auswählen
 						</Button>
 						
-						
-						
-						
+						<p></p>
+						<Button variant="success" onClick={(event) => {handleRunClick(device.device_id, event);}}>Run</Button>
+						<Button variant="success" onClick={(event) => {handleStopClick(device.device_id, event);}}>Stop</Button>
 					</div>
 				))}
 			</div>

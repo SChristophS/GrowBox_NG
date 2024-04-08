@@ -8,19 +8,6 @@ ConnectedClients = Dict[str, websockets.WebSocketServerProtocol]
 
 connected_clients: ConnectedClients = {}
 
-async def send_device_list(websocket, chipId):
-    # Erstellen einer Liste der registrierten Geräte mit der gleichen chipId
-    device_list = [
-        key for key in connected_clients if key.startswith(f"{chipId}-")
-    ]
-    device_list_message = json.dumps({
-        "type": "device_list",
-        "device_id": chipId,
-        "devices": device_list
-    })
-    await websocket.send(device_list_message)
-    print(f"[DEBUG] Sent device list: {device_list_message} to {chipId}")
-    
       
 async def send_device_list_to_all_with_chipId(chipId):
     device_list = [key for key in connected_clients if key.startswith(f"{chipId}-")]
@@ -34,6 +21,7 @@ async def send_device_list_to_all_with_chipId(chipId):
         if client_key.startswith(f"{chipId}-"):
             await websocket.send(device_list_message)
             print(f"[DEBUG] Sent device list to {client_key} with chipId {chipId}")
+
 
 
 async def handler(websocket: websockets.WebSocketServerProtocol, path: str):
@@ -57,8 +45,43 @@ async def handler(websocket: websockets.WebSocketServerProtocol, path: str):
                 else:
                     print(f"[DEBUG] Duplicate: {device_type} with chipId {chipId} already connected.")
             
+            
+            elif data.get("action") == "startGrow":
+                for target_key, target_websocket in connected_clients.items():
+                    print(f"[DEBUG] send command to target_key: {target_key}")
+                    
+                    new_message_structure = json.dumps({
+                        "device": "frontend",
+                        "chipId": chipId,
+                        "action": "startGrow"
+                    })
+                
+                    
+                    if target_key.startswith(f"{chipId}-controller"):  # Achten Sie darauf, dass dies mit Ihrer Benennungskonvention übereinstimmt
+                        await target_websocket.send(new_message_structure)  # Senden der neu strukturierten Nachricht
+                        print(f"[DEBUG] send command to controller: {data}")
+            
+            
+            elif data.get("action") == "stopGrow":
+                for target_key, target_websocket in connected_clients.items():
+                    print(f"[DEBUG] send command to target_key: {target_key}")
+                    
+                    new_message_structure = json.dumps({
+                        "device": "frontend",
+                        "chipId": chipId,
+                        "action": "stopGrow"
+                    })
+                    
+                    if target_key.startswith(f"{chipId}-controller"):  # Achten Sie darauf, dass dies mit Ihrer Benennungskonvention übereinstimmt
+                        await target_websocket.send(new_message_structure)  # Senden der neu strukturierten Nachricht
+                        print(f"[DEBUG] send command to controller: {data}")            
+            
+            
+            
             elif data.get("action") == "send_growplan":
                 chipId = data.get("chipId")
+                print(f"[DEBUG] action: send_growplan with chip-id: {chipId}")
+                
                 # Stellen Sie sicher, dass `data.get("message")` die Growplan-Daten enthält, die Sie senden möchten
                 growplan_data = data.get("message")  # Dies sollte bereits ein Dictionary der Growplan-Daten sein
 
@@ -72,12 +95,18 @@ async def handler(websocket: websockets.WebSocketServerProtocol, path: str):
 
                 # Senden der Nachricht an alle verbundenen Controller mit der gleichen chipId
                 targets_sent_to = []
+                
                 for target_key, target_websocket in connected_clients.items():
+                    print(f"[DEBUG] send growplan to target_key: {target_key}")
+                    
                     if target_key.startswith(f"{chipId}-controller"):  # Achten Sie darauf, dass dies mit Ihrer Benennungskonvention übereinstimmt
                         await target_websocket.send(new_message_structure)  # Senden der neu strukturierten Nachricht
-                        new_message_structure
-                        print(f"[DEBUG] Sent growplan: {new_message_structure}")
-                print(f"[DEBUG] Sent growplan to: {targets_sent_to}")
+                        print(f"[DEBUG] send growplan to controller: {new_message_structure}")
+ 
+                    if target_key.startswith(f"{chipId}-Frontend"):  # Achten Sie darauf, dass dies mit Ihrer Benennungskonvention übereinstimmt
+                        await target_websocket.send(new_message_structure)  # Senden der neu strukturierten Nachricht
+                        print(f"[DEBUG] send growplan to frontend: {new_message_structure}")
+                        
                 
     except websockets.exceptions.ConnectionClosedError:
         print("[DEBUG] Connection closed unexpectedly")

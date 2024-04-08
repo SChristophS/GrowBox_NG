@@ -62,3 +62,11 @@
 .status-dot.disconnected {
     background-color: red;
 }
+
+.status-dot.running {
+    background-color: green;
+}
+
+.status-dot.notRunning {
+    background-color: red;
+}
