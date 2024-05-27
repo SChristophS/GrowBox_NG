@@ -1,0 +1,15 @@
+#ifndef NETWORK_H
+#define NETWORK_H
+
+#include "wizchip_conf.h"
+
+// Network configuration and initialization function
+void initialize_network(void);
+void print_network_information(void);
+int8_t process_dhcp(void);
+int8_t process_dns(void);
+
+extern wiz_NetInfo defaultNetInfo;
+
+#endif // NETWORK_H
+

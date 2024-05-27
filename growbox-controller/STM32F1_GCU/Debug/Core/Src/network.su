@@ -1,0 +1,4 @@
+../Core/Src/network.c:32:6:print_network_information	32	static
+../Core/Src/network.c:41:8:process_dhcp	16	static
+../Core/Src/network.c:67:8:process_dns	16	static
+../Core/Src/network.c:89:6:initialize_network	16	static

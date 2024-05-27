@@ -9,14 +9,6 @@
     flex-wrap: wrap;
 }
 
-.device {
-    width: 150px;
-    margin: 10px;
-    padding: 10px;
-    border: 1px solid #0f0;
-    cursor: pointer;
-}
-
 .messages-display {
     margin-top: 20px;
     padding: 10px;
@@ -34,4 +26,47 @@
     margin-bottom: 10px;
     padding: 5px;
     border-radius: 5px;
+}
+
+.devices-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px; /* Abstand zwischen den Boxen */
+}
+
+.device {
+    padding: 20px;
+    border: 2px solid #4CAF50; /* Größere, auffällige Rahmen */
+    border-radius: 10px;
+}
+
+.device.connected {
+    border: 2px solid green;
+}
+
+.device.disconnected {
+    border: 2px solid red;
+}
+
+.status-dot {
+    height: 10px;
+    width: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-dot.connected {
+    background-color: green;
+}
+
+.status-dot.disconnected {
+    background-color: red;
+}
+
+.status-dot.running {
+    background-color: green;
+}
+
+.status-dot.notRunning {
+    background-color: red;
 }

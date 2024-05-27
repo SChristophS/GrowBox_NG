@@ -1,0 +1,3 @@
+../Core/Src/mqtt_client.c:28:6:GetSTM32UID	1
+../Core/Src/mqtt_client.c:38:6:messageArrived	3
+../Core/Src/mqtt_client.c:56:5:mqtt_client_init	1

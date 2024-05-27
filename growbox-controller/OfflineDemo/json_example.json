@@ -1,50 +1,115 @@
 {
-  "_id": {
-    "$oid": "64550e4e8408b864cd1df9a7"
-  },
+  "_id": "65a82865b4bdbc3380a688b0",
   "username": "christoph",
-  "growCycleName": "Zyklus_12h",
-  "description": "Testzyklus 12h",
+  "growCycleName": "4xtag1",
   "sharingStatus": "public",
   "growData": {
-    "totalGrowTime": 720,
-    "startFromHere" :16,
+    "totalGrowTime": 0,
+    "startFromHere": 0,
     "ledCycles": [
+      {
+        "durationOn": 3,
+        "durationOff": 3,
+        "ledRepetitions": 2
+      },
+      {
+        "durationOn": 5,
+        "durationOff": 5,
+        "ledRepetitions": 4
+      },
+      {
+        "durationOn": 4,
+        "durationOff": 4,
+        "ledRepetitions": 2
+      },
+      {
+        "durationOn": 7,
+        "durationOff": 7,
+        "ledRepetitions": 4
+      },
       {
         "durationOn": 5,
         "durationOff": 5,
         "ledRepetitions": 2
       },
       {
-        "durationOn": 2,
-        "durationOff": 3,
+        "durationOn": 10,
+        "durationOff": 10,
+        "ledRepetitions": 4
+      },
+      {
+        "durationOn": 8,
+        "durationOff": 8,
         "ledRepetitions": 2
+      },
+      {
+        "durationOn": 9,
+        "durationOff": 9,
+        "ledRepetitions": 4
+      },
+      {
+        "durationOn": 12,
+        "durationOff": 12,
+        "ledRepetitions": 24
       }
     ],
     "tempCycles": [
       {
-        "temperature1": 20,
-        "duration1": 700
+        "temperature": 20,
+        "duration": 1440
       },
       {
-        "temperature1": 30,
-        "duration1": 20
+        "temperature": 20,
+        "duration": 1440
+      },
+      {
+        "temperature": 20,
+        "duration": 1440
+      },
+      {
+        "temperature": 20,
+        "duration": 1440
+      },
+      {
+        "temperature": 25,
+        "duration": 2880
       }
     ],
     "wateringCycles": [
       {
         "status1": "full",
-        "duration1": 300,
+        "duration1": 30,
         "status2": "empty",
-        "duration2": 300,
-        "waterRepetitions": 1
+        "duration2": 30,
+        "waterRepetitions": 24
       },
       {
         "status1": "full",
-        "duration1": 60,
+        "duration1": 30,
         "status2": "empty",
-        "duration2": 60,
-        "waterRepetitions": 1
+        "duration2": 30,
+        "waterRepetitions": 24
+      },
+      {
+        "status1": "full",
+        "duration1": 30,
+        "status2": "empty",
+        "duration2": 30,
+        "waterRepetitions": 24
+      },
+      {
+        "status1": "full",
+        "duration1": 30,
+        "status2": "empty",
+        "duration2": 30,
+        "waterRepetitions": 24
+      },
+      {
+        "status1": "full",
+        "duration1": 30,
+        "status2": "empty",
+        "duration2": 30,
+        "waterRepetitions": 48
       }
     ]
   }
