@@ -1,4 +1,6 @@
 #include "LedController.h"
+#include "Globals.h"
+
 
 LedController::LedController() {}
 
@@ -30,9 +32,9 @@ void LedController::update() {
         if (cycleIndex < cycles.size()) {
             LedCycle& cycle = cycles[cycleIndex];
             if (currentStateTime < cycle.durationOn) {
-                changeLedStatus(true);
+                LEDstatus = true;
             } else if (currentStateTime < cycle.durationOn + cycle.durationOff) {
-                changeLedStatus(false);
+                LEDstatus = false;
             }
             currentStateTime++;
             if (currentStateTime >= (cycle.durationOn + cycle.durationOff)) {
@@ -56,12 +58,3 @@ void LedController::debugPrintCycle(const LedCycle& cycle) {
     Serial.println(cycle.repetitions);
 }
 
-void LedController::changeLedStatus(bool status) {
-    if (ledStatus != status) {
-        ledStatus = status;
-        Serial.print(F("LED "));
-        Serial.println(status ? F("On") : F("Off"));
-        // Implement actual LED change here, e.g., digitalWrite(LED_PIN, ledStatus ? HIGH : LOW);
-        digitalWrite(D0, ledStatus ? HIGH : LOW);
-    }
-}

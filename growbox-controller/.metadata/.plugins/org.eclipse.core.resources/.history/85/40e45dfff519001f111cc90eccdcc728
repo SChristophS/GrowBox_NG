@@ -1,0 +1,19 @@
+/*
+ * mqtt.h
+ *
+ *  Created on: May 24, 2024
+ *      Author: chris
+ */
+
+#ifndef MQTT_H
+#define MQTT_H
+
+#include "MQTTClient.h"
+#include "wizchip_conf.h"
+
+void connect_to_mqtt_server(void);
+void messageArrived(MessageData* md);
+
+#endif // MQTT_H
+
+

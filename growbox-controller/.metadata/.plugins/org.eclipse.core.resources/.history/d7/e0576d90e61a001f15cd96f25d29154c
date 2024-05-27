@@ -1,0 +1,9 @@
+#ifndef MQTT_CLIENT_H
+#define MQTT_CLIENT_H
+
+#include "MQTTClient.h"
+
+// MQTT configuration and initialization function
+void initialize_mqtt(void);
+
+#endif // MQTT_CLIENT_H

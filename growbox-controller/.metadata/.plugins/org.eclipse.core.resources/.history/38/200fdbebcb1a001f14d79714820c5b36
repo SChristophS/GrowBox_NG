@@ -1,0 +1,106 @@
+/*
+ * network.c
+ *
+ *  Created on: May 24, 2024
+ *      Author: chris
+ */
+
+#include "network.h"
+#include <stdio.h>
+#include "wizchip_conf.h"
+#include "wizchip_init.h"
+#include "DHCP/dhcp.h"
+#include "uart_redirect.h"
+
+wiz_NetInfo defaultNetInfo = {
+  .mac = {0x00, 0x08, 0xdc, 0xff, 0xee, 0xdd},
+  .ip = {192, 168, 178, 100},
+  .sn = {255, 255, 255, 0},
+  .gw = {192, 168, 178, 1},
+  .dns = {8, 8, 8, 8},
+  .dhcp = NETINFO_STATIC
+};
+
+typedef enum {
+  OFF = 0,
+  ON = 1
+} OnOff_State_Type;
+
+extern uint8_t flag_process_dhcp_success;
+extern uint8_t flag_process_dns_success;
+uint8_t data_buf[DATA_BUF_SIZE]; // TX Buffer for applications
+
+
+void init_network(void) {
+    printf("\t - Resetting W5500 - \r\n");
+    resetAssert();
+    HAL_Delay(300);
+    resetDeassert();
+    HAL_Delay(300);
+
+    printf("\t - Initializing WizChip - \r\n");
+    WIZCHIPInitialize();
+    printf("WizChip version: %.2x\r\n", getVERSIONR());
+    wizchip_setnetinfo(&defaultNetInfo);
+
+    printf("\t - Init Network Settings \r\n");
+    print_network_information();
+
+    printf("\t - Starting DHCP - \r\n");
+    DHCP_init(SOCK_DHCP, data_buf);
+}
+
+int check_network_connection(void) {
+  uint8_t socket_number = 0;
+  uint8_t destination_ip[4] = { 23, 21, 222, 144 }; // test.mosquitto.org
+  uint16_t destination_port = 80; // HTTP port
+
+  socket(socket_number, Sn_MR_TCP, 5000, 0);
+  if (connect(socket_number, destination_ip, destination_port) != SOCK_OK) {
+    printf("Connection to test.mosquitto.org failed\r\n");
+    close(socket_number);
+    return -1;
+  }
+  printf("Connection to test.mosquitto.org successful\r\n");
+  close(socket_number);
+  return 0;
+}
+
+
+void print_network_information(void) {
+	printf("\t - Network Information==\r\n");
+    wizchip_getnetinfo(&defaultNetInfo);
+    printf("\t - Mac address: %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+            defaultNetInfo.mac[0], defaultNetInfo.mac[1], defaultNetInfo.mac[2],
+            defaultNetInfo.mac[3], defaultNetInfo.mac[4], defaultNetInfo.mac[5]);
+    printf("\t - IP address : %d.%d.%d.%d\r\n",
+            defaultNetInfo.ip[0], defaultNetInfo.ip[1], defaultNetInfo.ip[2], defaultNetInfo.ip[3]);
+    printf("\t - SM Mask    : %d.%d.%d.%d\r\n",
+            defaultNetInfo.sn[0], defaultNetInfo.sn[1], defaultNetInfo.sn[2], defaultNetInfo.sn[3]);
+    printf("\t - Gateway   : %d.%d.%d.%d\r\n",
+            defaultNetInfo.gw[0], defaultNetInfo.gw[1], defaultNetInfo.gw[2], defaultNetInfo.gw[3]);
+    printf("\t - DNS Server : %d.%d.%d.%d\r\n",
+            defaultNetInfo.dns[0], defaultNetInfo.dns[1], defaultNetInfo.dns[2], defaultNetInfo.dns[3]);
+}
+
+int8_t process_dhcp(void) {
+    uint8_t ret = DHCP_run();
+    static uint8_t dhcp_retry = 0;
+
+    if (ret == DHCP_IP_LEASED) {
+        printf(" - DHCP Success\r\n");
+        flag_process_dhcp_success = ON;
+    } else if (ret == DHCP_FAILED) {
+        dhcp_retry++;
+        if (dhcp_retry <= 3) {
+            printf(" - DHCP Timeout occurred, retry [%d]\r\n", dhcp_retry);
+        } else {
+            printf(" - DHCP Failed\r\n\r\n");
+            DHCP_stop();
+            flag_process_dhcp_success = OFF;
+        }
+    }
+
+    return ret;
+}
+

@@ -1,0 +1,9 @@
+#include "w5500.h"
+#include "wizchip_conf.h"
+#include "MQTTClient.h"
+#include <stdio.h>
+
+#define BUFFER_SIZE	2048
+
+unsigned char targetIP[4] = {}; // mqtt server IP
+unsigned int targetPort = 1883; // mqtt server port

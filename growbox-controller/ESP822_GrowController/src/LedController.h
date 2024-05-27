@@ -22,10 +22,8 @@ private:
     size_t cycleIndex = 0;
     int currentRepetition = 0;
     int currentStateTime = 0;
-    bool ledStatus = false;
     
     void debugPrintCycle(const LedCycle& cycle);
-    void changeLedStatus(bool status);
 };
 
 #endif

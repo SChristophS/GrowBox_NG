@@ -1,0 +1,11 @@
+#ifndef MQTT_CLIENT_H
+#define MQTT_CLIENT_H
+
+#include "mqtt_client.h"
+
+// Function prototypes
+void messageArrived(MessageData* md);
+int mqtt_client_init(Network* n, MQTTClient* c, unsigned char* targetIP, unsigned int targetPort);
+void mqtt_client_yield(MQTTClient* c, int interval);
+
+#endif // MQTT_CLIENT_H
