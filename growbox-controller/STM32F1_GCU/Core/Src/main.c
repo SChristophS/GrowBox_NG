@@ -29,6 +29,7 @@
 #include "wizchip_conf.h"
 #include "mqtt_client.h"
 #include <stdint.h>
+#include <stdbool.h> // Hinzufügen für den bool-Typ
 
 
 
@@ -53,6 +54,7 @@ unsigned int targetPort = 49154; // mqtt server port
 const char* const MQTT_USERNAME = "christoph";
 const char* const MQTT_PASSWORD = "Aprikose99";
 
+bool connect_to_backend = false;
 
 /* USER CODE END PD */
 
@@ -134,6 +136,10 @@ int main(void)
   {
 	  //mqtt_client_yield(&c, 1000);
 	  MQTTYield(&c, 1000);
+
+	  if (connect_to_backend){
+		  printf("Wuerde jetzt verbindung herstellen");
+	  };
 
     // Network connection handling code
     // Example: handling incoming connections or performing periodic tasks

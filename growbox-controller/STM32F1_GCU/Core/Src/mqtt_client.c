@@ -4,9 +4,15 @@
 #include <string.h> // Für memcpy
 #include "uart_redirect.h"
 #include "stm32f1xx_hal.h" //für uid
+#include <string.h>
+#include <stdio.h>
+#include <cJSON.h>
+#include <stdbool.h>
 
 // Puffergröße Definition
 #define BUFFER_SIZE 2048
+
+extern bool connect_to_backend;
 
 // Puffer zum Empfangen von Daten
 unsigned char tempBuffer[BUFFER_SIZE] = {};
@@ -40,13 +46,50 @@ void messageArrived(MessageData* md)
     unsigned char testbuffer[100];
     MQTTMessage* message = md->message;
 
+    // Nachricht in den Puffer kopieren und nullterminieren
+    memcpy(testbuffer, (char*)message->payload, (int)message->payloadlen);
+    testbuffer[(int)message->payloadlen] = '\0';
+
+    // Nachricht drucken, falls showtopics aktiviert ist
     if (opts.showtopics)
     {
-        memcpy(testbuffer, (char*)message->payload, (int)message->payloadlen);
-        *(testbuffer + (int)message->payloadlen) = '\n'; // Zeichen als Char zuweisen
-        printf("%s\r\n", testbuffer);
+        printf("Message received: %s\r\n", testbuffer);
     }
 
+    // Nachricht als JSON parsen
+    cJSON *json = cJSON_Parse((char*)testbuffer);
+    if (json == NULL)
+    {
+        printf("Error parsing JSON\n");
+        return;
+    }
+
+    // JSON-Wert von "action" extrahieren
+    cJSON *action = cJSON_GetObjectItemCaseSensitive(json, "action");
+    if (cJSON_IsString(action) && (action->valuestring != NULL))
+    {
+        printf("Action: %s\r\n", action->valuestring);
+
+        // switch-Anweisung für verschiedene Aktionen
+        if (strcmp(action->valuestring, "connect_socket") == 0)
+        {
+            printf("Connecting to socketServer...\r\n");
+            connect_to_backend = true;
+            // Hier den Code für das Verbinden des Sockets einfügen
+        }
+        else
+        {
+            printf("Unknown action: %s\n", action->valuestring);
+        }
+    }
+    else
+    {
+        printf("No action found in message\n");
+    }
+
+    cJSON_Delete(json);
+
+    // Zusätzliche Nachrichtenverarbeitung
     if (opts.nodelimiter)
         printf("%.*s", (int)message->payloadlen, (char*)message->payload);
     else
@@ -55,10 +98,7 @@ void messageArrived(MessageData* md)
 
 int mqtt_client_init(Network* n, MQTTClient* c, unsigned char* targetIP, unsigned int targetPort, const char* MQTT_USERNAME, const char* MQTT_PASSWORD)
 {
-    char uidStr[25];
-    GetSTM32UID(uidStr);
 
-    printf("STM32 UID: %s\n", uidStr);
 
     unsigned char buf[100];
     int rc;
@@ -73,7 +113,7 @@ int mqtt_client_init(Network* n, MQTTClient* c, unsigned char* targetIP, unsigne
     MQTTPacket_connectData data = MQTTPacket_connectData_initializer;
     data.willFlag = 0;
     data.MQTTVersion = 3;
-    data.clientID.cstring = uidStr;
+    data.clientID.cstring = "TEST_STM32";
     data.username.cstring = (char*)MQTT_USERNAME;
     data.password.cstring = (char*)MQTT_PASSWORD;
 
@@ -84,9 +124,37 @@ int mqtt_client_init(Network* n, MQTTClient* c, unsigned char* targetIP, unsigne
     printf("Connected %d\r\n", rc);
     opts.showtopics = 1;
 
-    printf("Subscribing to %s\r\n", "hello/wiznet");
-    rc = MQTTSubscribe(c, "hello/wiznet", opts.qos, messageArrived);
-    printf("Subscribed %d\r\n", rc);
+    char topic[50];
+    static char global_topic[50];
+    static char global_uidStr[25];
+
+    char uidStr[25];
+    GetSTM32UID(uidStr);
+
+    printf("STM32 UID: %s\n", uidStr);
+
+    GetSTM32UID(global_uidStr);
+    printf("global_uidStr STM32 UID: %s\n", global_uidStr);
+
+    sprintf(global_topic, "growbox/%s/SocketConnect", global_uidStr);
+    printf("Subscribing to %s\r\n", global_topic);
+
+    // Abonnieren des Themas
+    rc = MQTTSubscribe(c, global_topic, opts.qos, messageArrived);
+    printf("Subscribed to %s with result %d\r\n", global_topic, rc);
+
+    // Zusätzliche Fehlerprüfung
+    if (rc != 0) {
+        printf("Fehler beim Abonnieren des Themas %s, Rückgabewert: %d\r\n", global_topic, rc);
+    }
+
+
+    // Weitere Überprüfung des Rückgabewertes
+    if (rc != 0) {
+        printf("Fehler beim Abonnieren des Themas %s, Rückgabewert: %d\r\n", global_uidStr, rc);
+    }
+
+
 
     return rc;
 }
