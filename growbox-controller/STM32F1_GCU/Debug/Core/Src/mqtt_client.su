@@ -1,3 +1,0 @@
-../Core/Src/mqtt_client.c:28:6:GetSTM32UID	40	static
-../Core/Src/mqtt_client.c:38:6:messageArrived	120	static
-../Core/Src/mqtt_client.c:56:5:mqtt_client_init	264	static
