@@ -1,3 +1,4 @@
 # Ausschließen aller Ordner
 growbox-controller/STM32F1_GCU/Debug/
 growbox-controller/.metadata/
+growbox-controller/STM32F1_GCU/.settings/
