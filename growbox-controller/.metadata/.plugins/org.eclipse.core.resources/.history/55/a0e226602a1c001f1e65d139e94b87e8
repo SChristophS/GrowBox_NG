@@ -1,8 +1,0 @@
-#ifndef MQTT_CLIENT_H
-#define MQTT_CLIENT_H
-
-#include "MQTTClient.h"
-
-int mqtt_client_init(Network* n, MQTTClient* c, unsigned char* targetIP, unsigned int targetPort, const char* MQTT_USERNAME, const char* MQTT_PASSWORD);
-
-#endif // MQTT_CLIENT_H

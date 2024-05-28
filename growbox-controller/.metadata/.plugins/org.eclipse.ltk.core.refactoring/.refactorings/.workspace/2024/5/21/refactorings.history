@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">&#x0A;<refactoring comment="Delete resource &apos;STM32F1_GBC/Core/Src/w5500/W5500&apos;" deleteContents="false" description="Delete resource &apos;STM32F1_GBC/Core/Src/w5500/W5500&apos;" element1="/STM32F1_GBC/Core/Src/w5500/W5500" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1716555265360"/>&#x0A;<refactoring comment="Delete resource &apos;STM32F1_GBC&apos;" deleteContents="false" description="Delete resource &apos;STM32F1_GBC&apos;" element1="/STM32F1_GBC" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1716556173372"/>
-</session>
