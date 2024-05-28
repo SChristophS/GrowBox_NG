@@ -7,3 +7,5 @@
 1716810441804	Delete resource 'STM32F1_GCU/Core/Src/w5500/MQTT'
 1716811702075	Delete resource 'STM32F1_GCU/Third_Party/MQTT-C'
 1716811970079	Delete resource 'STM32F1_GCU/Third_Party/pahoMqttClient'
+1716931234149	Delete resource 'STM32F1_GCU/Core/Src/socket_connection.c'
+1716931237598	Delete resource 'STM32F1_GCU/Core/Inc/socket_connection.h'

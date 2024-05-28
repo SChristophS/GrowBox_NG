@@ -1,6 +1,0 @@
-#include "w5500.h"
-#include "wizchip_conf.h"
-#include "MQTTClient.h"
-#include <stdio.h>
-
-#define BUFFER_SIZE	2048

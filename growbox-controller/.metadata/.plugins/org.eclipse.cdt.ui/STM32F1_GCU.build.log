@@ -1,18 +1,21 @@
-16:38:39 **** Incremental Build of configuration Debug for project STM32F1_GCU ****
+23:23:36 **** Incremental Build of configuration Debug for project STM32F1_GCU ****
 make -j12 all 
-arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m3 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F103xB -c -I../Core/Inc -I../Core/Src/w5500/MQTT -I../Core/Src/w5500/DNS -I../Core/Src/w5500 -I../Core/Src/w5500/W5500 -I../Core/Src/w5500/DHCP -I../Drivers/STM32F1xx_HAL_Driver/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/main.o"
-arm-none-eabi-gcc "../Core/Src/mqtt_client.c" -mcpu=cortex-m3 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F103xB -c -I../Core/Inc -I../Core/Src/w5500/MQTT -I../Core/Src/w5500/DNS -I../Core/Src/w5500 -I../Core/Src/w5500/W5500 -I../Core/Src/w5500/DHCP -I../Drivers/STM32F1xx_HAL_Driver/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/mqtt_client.d" -MT"Core/Src/mqtt_client.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/mqtt_client.o"
+arm-none-eabi-gcc "../Core/Src/mqtt_client.c" -mcpu=cortex-m3 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F103xB -c -I../Core/Inc -I../Core/Src/cJSON -I../Core/Src/w5500/MQTT -I../Core/Src/w5500/DNS -I../Core/Src/w5500 -I../Core/Src/w5500/W5500 -I../Core/Src/w5500/DHCP -I../Drivers/STM32F1xx_HAL_Driver/Inc -I../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"Core/Src/mqtt_client.d" -MT"Core/Src/mqtt_client.o" --specs=nano.specs -mfloat-abi=soft -mthumb -o "Core/Src/mqtt_client.o"
+../Core/Src/mqtt_client.c: In function 'mqtt_client_init':
+../Core/Src/mqtt_client.c:127:10: warning: unused variable 'topic' [-Wunused-variable]
+  127 |     char topic[50];
+      |          ^~~~~
 arm-none-eabi-gcc -o "STM32F1_GCU.elf" @"objects.list"   -mcpu=cortex-m3 -T"D:\git\GrowBox_NG\growbox-controller\STM32F1_GCU\STM32F103RBTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32F1_GCU.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 Finished building target: STM32F1_GCU.elf
  
 arm-none-eabi-size  STM32F1_GCU.elf 
 arm-none-eabi-objdump -h -S STM32F1_GCU.elf  > "STM32F1_GCU.list"
    text	   data	    bss	    dec	    hex	filename
-  38064	    268	   6284	  44616	   ae48	STM32F1_GCU.elf
+  54220	    644	   6380	  61244	   ef3c	STM32F1_GCU.elf
 Finished building: default.size.stdout
  
 Finished building: STM32F1_GCU.list
  
 
-16:38:39 Build Finished. 0 errors, 0 warnings. (took 925ms)
+23:23:37 Build Finished. 0 errors, 1 warnings. (took 1s.93ms)
 
