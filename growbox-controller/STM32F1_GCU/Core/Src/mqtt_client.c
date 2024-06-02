@@ -149,11 +149,6 @@ int mqtt_client_init(Network* n, MQTTClient* c, unsigned char* targetIP, unsigne
     }
 
 
-    // Weitere Überprüfung des Rückgabewertes
-    if (rc != 0) {
-        printf("Fehler beim Abonnieren des Themas %s, Rückgabewert: %d\r\n", global_uidStr, rc);
-    }
-
 
 
     return rc;

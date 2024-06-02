@@ -151,10 +151,12 @@ function Growbox() {
 	
 	const AskControllerToConnect = (event) => {
 		// Stoppen des Event-Bubblings
+		
 		event.stopPropagation();
 
 		const requestData = { device_id: selectedDeviceId };
-		
+		console.log('RequestedData: ', requestData);
+		console.log("RequestedData:");
 		fetch(`${process.env.REACT_APP_API_URL}/ask-growbox-to-socket-connect`, {
 		  method: "POST",
 		  headers: {

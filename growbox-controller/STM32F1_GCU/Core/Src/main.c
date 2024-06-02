@@ -23,15 +23,14 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "network.h"
-#include "mqtt_client.h"
 #include "uart_redirect.h"
 #include "wizchip_init.h"
 #include "wizchip_conf.h"
 #include "mqtt_client.h"
 #include <stdint.h>
 #include <stdbool.h> // Hinzufügen für den bool-Typ
-
-
+#include "tcp_client.h"
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -49,12 +48,13 @@
 //Socket number defines
 #define TCP_SOCKET    0
 
-unsigned char targetIP[4] = {192, 168, 178, 25}; // Beispiel IP
-unsigned int targetPort = 49154; // mqtt server port
-const char* const MQTT_USERNAME = "christoph";
-const char* const MQTT_PASSWORD = "Aprikose99";
-
 bool connect_to_backend = false;
+bool socket_connected = false;
+
+// Definiere die IP-Adresse und den Port des Backend-Servers
+unsigned char backendIP[4] = {192, 168, 178, 25}; // Beispiel IP
+unsigned int backendPort = 8085; // Beispiel Port
+uint8_t sock = TCP_SOCKET; // Verwende den definierten Socket
 
 /* USER CODE END PD */
 
@@ -68,6 +68,9 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+uint8_t tx_buf[1024];  // Hinzugefügt
+uint8_t rx_buf[1024];  // Hinzugefügt
+int ret;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -137,9 +140,44 @@ int main(void)
 	  //mqtt_client_yield(&c, 1000);
 	  MQTTYield(&c, 1000);
 
-	  if (connect_to_backend){
-		  printf("Wuerde jetzt verbindung herstellen");
-	  };
+      if (connect_to_backend) {
+          // Connection to backend is requested
+
+          if (TCP_CheckConnection(sock)) {
+              // Verbindung besteht bereits
+              // Hier die Routine, um die Verbindung aufrecht zu erhalten
+              // Zum Beispiel: Heartbeat-Nachricht senden oder Daten austauschen
+              // Sende eine Heartbeat-Nachricht
+              strcpy((char *)tx_buf, "Heartbeat");
+              ret = TCP_Send(sock, tx_buf, strlen((char *)tx_buf));
+              if (ret < 0) {
+                  printf("Error sending heartbeat. Connection might be closed.\n");
+                  socket_connected = false;
+              } else {
+                  socket_connected = true;
+              }
+          } else {
+              // Verbindung nicht vorhanden, versuche eine neue Verbindung herzustellen
+              ret = TCP_Connect(sock, backendIP, backendPort);
+              if (ret == 0) {
+                  printf("Connected to backend server.\n");
+                  socket_connected = true;
+              } else {
+                  printf("Failed to connect to backend server.\n");
+                  socket_connected = false;
+              }
+          }
+      } else {
+          // Verbindung zu Backend-Server nicht erwünscht
+          if (socket_connected && TCP_CheckConnection(sock)) {
+              // Verbindung ist noch aktiv, trenne die Verbindung
+              TCP_Close(sock);
+              printf("Disconnected from backend server.\n");
+              socket_connected = false;
+          }
+      }
+
+	    HAL_Delay(500);
 
     // Network connection handling code
     // Example: handling incoming connections or performing periodic tasks
