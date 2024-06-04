@@ -1,0 +1,187 @@
+#include "tcp_client.h"
+#include <stdio.h>
+#include <string.h>
+
+int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport)
+{
+   int32_t ret; // return value for SOCK_ERRORs
+   uint16_t size = 0, sentsize=0;
+
+   static uint16_t any_port = 50000;
+
+   switch(getSn_SR(sn))
+   {
+      case SOCK_ESTABLISHED :
+         if(getSn_IR(sn) & Sn_IR_CON)
+         {
+            printf("%d:Connected to - %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
+            setSn_IR(sn, Sn_IR_CON);
+         }
+
+         if((size = getSn_RX_RSR(sn)) > 0)
+         {
+            if(size > DATA_BUF_SIZE) size = DATA_BUF_SIZE;
+            ret = recv(sn, buf, size);
+
+            if(ret <= 0) return ret;
+            size = (uint16_t) ret;
+
+            // Drucke die empfangene Nachricht
+            buf[size] = '\0'; // Stelle sicher, dass der Puffer nullterminiert ist
+            printf("Empfangene Nachricht: %s\n", buf);
+
+            sentsize = 0;
+
+            while(size != sentsize)
+            {
+                ret = send(sn, buf+sentsize, size-sentsize);
+                if(ret < 0)
+                {
+                    close(sn);
+                    return ret;
+                }
+                sentsize += ret;
+            }
+         }
+         break;
+
+      case SOCK_CLOSE_WAIT :
+         printf("%d:Socket CloseWait\n", sn);
+         if((ret=disconnect(sn)) != SOCK_OK) return ret;
+         printf("%d:Socket Closed\n", sn);
+         break;
+
+      case SOCK_INIT :
+         printf("%d:Try to connect to the %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
+         if( (ret = connect(sn, destip, destport)) != SOCK_OK) return ret;
+         break;
+
+      case SOCK_CLOSED:
+         printf("%d:Socket closed, reopening...\n", sn);
+         if((ret=socket(sn, Sn_MR_TCP, any_port++, 0x00)) != sn)
+         {
+            if(any_port == 0xffff) any_port = 50000;
+            return ret;
+         }
+         printf("%d:TCP client loopback start\n", sn);
+         printf("%d:Socket opened\n", sn);
+         break;
+
+      default:
+         break;
+   }
+   return 1;
+}
+
+
+void socket_network_init(SocketNetwork *n, const char *server_ip, uint16_t server_port, uint16_t local_port) {
+    n->server_ip = server_ip;
+    n->server_port = server_port;
+    n->local_port = local_port;
+    n->sock = -1;
+
+    printf("Initialisiere Socket-Netzwerk...\r\n");
+    n->sock = socket(0, Sn_MR_TCP, n->local_port, 0);
+    printf("Ergebnis der Socket-Initialisierung: %d\r\n", n->sock);
+    if (n->sock < 0) {
+        printf("Socket-Initialisierung fehlgeschlagen.\r\n");
+    } else {
+        printf("Socket erfolgreich initialisiert. Socket Nummer: %d\r\n", n->sock);
+    }
+}
+
+void socket_connect(SocketNetwork *n) {
+    if (n->sock < 0) {
+        socket_network_init(n, n->server_ip, n->server_port, n->local_port);
+    }
+
+    printf("Versuche, Verbindung zum Server herzustellen...\r\n");
+    printf("Server IP: %s, Server Port: %d\r\n", n->server_ip, n->server_port);
+    printf("Socket Status vor dem Verbinden: %d\r\n", getSn_SR(n->sock));
+
+    int result = connect(n->sock, (uint8_t *)n->server_ip, n->server_port);
+    printf("Resultat des Verbindungsversuchs: %d\r\n", result);
+    printf("Socket Status nach dem Verbinden: %d\r\n", getSn_SR(n->sock));
+
+    if (result == SOCK_OK) {
+        printf("Verbindung zum Server hergestellt.\r\n");
+    } else {
+        printf("Verbindungsversuch fehlgeschlagen. Fehlercode: %d\r\n", result);
+        switch(result) {
+            case SOCKERR_TIMEOUT:
+                printf("Fehler: Timeout\r\n");
+                break;
+            case SOCKERR_SOCKCLOSED:
+                printf("Fehler: Socket geschlossen\r\n");
+                break;
+            case SOCKERR_SOCKINIT:
+                printf("Fehler: Socket nicht initialisiert\r\n");
+                break;
+            case SOCKERR_SOCKSTATUS:
+                printf("Fehler: Ungültiger Socket-Status\r\n");
+                break;
+            case SOCKERR_ARG:
+                printf("Fehler: Ungültiges Argument\r\n");
+                break;
+            default:
+                printf("Unbekannter Fehler\r\n");
+                break;
+        }
+        disconnect(n->sock);
+        n->sock = -1;
+    }
+}
+
+void socket_send(SocketNetwork *n, const uint8_t *data, uint16_t len) {
+    if (n->sock < 0) {
+        printf("Socket ist nicht initialisiert.\r\n");
+        return;
+    }
+
+    printf("Sende Daten...\r\n");
+    int result = send(n->sock, (uint8_t *)data, len);
+    if (result < 0) {
+        printf("Senden der Daten fehlgeschlagen. Fehlercode: %d\r\n", result);
+    } else {
+        printf("Daten erfolgreich gesendet. Bytes gesendet: %d\r\n", result);
+    }
+}
+
+void socket_receive(SocketNetwork *n, uint8_t *buffer, uint16_t len) {
+    if (n->sock < 0) {
+        printf("Socket ist nicht initialisiert.\r\n");
+        return;
+    }
+
+    printf("Empfange Daten...\r\n");
+    int result = recv(n->sock, buffer, len);
+    if (result < 0) {
+        printf("Empfangen der Daten fehlgeschlagen. Fehlercode: %d\r\n", result);
+    } else if (result == 0) {
+        printf("Verbindung geschlossen.\r\n");
+    } else {
+        buffer[result] = '\0'; // Null-terminiere die empfangenen Daten
+        printf("Daten erfolgreich empfangen:\r\n%s\r\n", buffer);
+    }
+}
+
+void socket_loop(SocketNetwork *n) {
+    switch(getSn_SR(n->sock)) {
+        case SOCK_ESTABLISHED:
+            printf("Verbindung ist etabliert.\r\n");
+            // Hier könnte Datenübertragung erfolgen
+            break;
+        case SOCK_CLOSE_WAIT:
+            printf("Server hat die Verbindung geschlossen.\r\n");
+            disconnect(n->sock);
+            n->sock = -1;
+            break;
+        case SOCK_CLOSED:
+            printf("Verbindung geschlossen. Neuverbindung wird versucht.\r\n");
+            socket_connect(n);
+            break;
+        default:
+            printf("Unbekannter Socket-Status: %d\r\n", getSn_SR(n->sock));
+            break;
+    }
+}

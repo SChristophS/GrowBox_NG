@@ -26,12 +26,11 @@
 #include "uart_redirect.h"
 #include "wizchip_init.h"
 #include "wizchip_conf.h"
-#include "mqtt_client.h"
 #include <stdint.h>
 #include <stdbool.h> // Hinzufügen für den bool-Typ
-#include "tcp_client.h"
+//#include "tcp_client.h"
 #include <string.h>
-
+#include <websocket_client.h.old>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,16 +44,12 @@
 //Receive Buffer Size define
 #define DATA_BUF_SIZE    2048
 
-//Socket number defines
-#define TCP_SOCKET    0
+
 
 bool connect_to_backend = false;
 bool socket_connected = false;
 
-// Definiere die IP-Adresse und den Port des Backend-Servers
-unsigned char backendIP[4] = {192, 168, 178, 25}; // Beispiel IP
-unsigned int backendPort = 8085; // Beispiel Port
-uint8_t sock = TCP_SOCKET; // Verwende den definierten Socket
+
 
 /* USER CODE END PD */
 
@@ -68,9 +63,7 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t tx_buf[1024];  // Hinzugefügt
-uint8_t rx_buf[1024];  // Hinzugefügt
-int ret;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -122,62 +115,30 @@ int main(void)
   resetDeassert();
   HAL_Delay(300);
 
+  uint8_t sn = SOCK_TCP; // Beispiel-Socket-Nummer, angenommen SOCK_TCP ist in network.h definiert
+  uint8_t buf[DATA_BUF_SIZE];
+  uint8_t destip[4] = {192, 168, 178, 72}; // Beispiel-IP-Adresse
+  uint16_t destport = 8085; // Beispielport
+
   initialize_network();
-
-   Network n;
-   MQTTClient c;
-
-   mqtt_client_init(&n, &c, targetIP, targetPort, MQTT_USERNAME, MQTT_PASSWORD);
-
-
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //mqtt_client_yield(&c, 1000);
-	  MQTTYield(&c, 1000);
+	  int32_t result = loopback_tcpc(sn, buf, destip, destport);
 
-      if (connect_to_backend) {
-          // Connection to backend is requested
-
-          if (TCP_CheckConnection(sock)) {
-              // Verbindung besteht bereits
-              // Hier die Routine, um die Verbindung aufrecht zu erhalten
-              // Zum Beispiel: Heartbeat-Nachricht senden oder Daten austauschen
-              // Sende eine Heartbeat-Nachricht
-              strcpy((char *)tx_buf, "Heartbeat");
-              ret = TCP_Send(sock, tx_buf, strlen((char *)tx_buf));
-              if (ret < 0) {
-                  printf("Error sending heartbeat. Connection might be closed.\n");
-                  socket_connected = false;
-              } else {
-                  socket_connected = true;
-              }
-          } else {
-              // Verbindung nicht vorhanden, versuche eine neue Verbindung herzustellen
-              ret = TCP_Connect(sock, backendIP, backendPort);
-              if (ret == 0) {
-                  printf("Connected to backend server.\n");
-                  socket_connected = true;
-              } else {
-                  printf("Failed to connect to backend server.\n");
-                  socket_connected = false;
-              }
-          }
+      // Bearbeite das Ergebnis
+      if (result < 0) {
+          printf("Loopback-TCP-Client-Operation fehlgeschlagen mit Fehlercode: %ld\n", (long)result);
+          break; // Oder handle den Fehler entsprechend, z.B. durch erneuten Verbindungsaufbau
       } else {
-          // Verbindung zu Backend-Server nicht erwünscht
-          if (socket_connected && TCP_CheckConnection(sock)) {
-              // Verbindung ist noch aktiv, trenne die Verbindung
-              TCP_Close(sock);
-              printf("Disconnected from backend server.\n");
-              socket_connected = false;
-          }
+
       }
 
-	    HAL_Delay(500);
+
+
 
     // Network connection handling code
     // Example: handling incoming connections or performing periodic tasks

@@ -1,22 +1,20 @@
-#ifndef __TCP_CLIENT_H__
-#define __TCP_CLIENT_H__
+#ifndef TCP_CLIENT_H
+#define TCP_CLIENT_H
 
+#include <stdint.h>
 #include "socket.h"
-#include "stm32f1xx_hal.h"
 
-// Stellt eine TCP-Verbindung zu einem Server her
-int TCP_Connect(uint8_t sock, uint8_t *ip, uint16_t port);
+typedef struct {
+    int8_t sock;
+    const char *server_ip;
+    uint16_t server_port;
+    uint16_t local_port;
+} SocketNetwork;
 
-// Sendet Daten über eine TCP-Verbindung
-int TCP_Send(uint8_t sock, uint8_t *data, uint16_t len);
+void socket_network_init(SocketNetwork *n, const char *server_ip, uint16_t server_port, uint16_t local_port);
+void socket_connect(SocketNetwork *n);
+void socket_send(SocketNetwork *n, const uint8_t *data, uint16_t len);
+void socket_receive(SocketNetwork *n, uint8_t *buffer, uint16_t len);
+void socket_loop(SocketNetwork *n);
 
-// Empfängt Daten über eine TCP-Verbindung
-int TCP_Receive(uint8_t sock, uint8_t *buf, uint16_t len);
-
-// Schließt die TCP-Verbindung
-void TCP_Close(uint8_t sock);
-
-// Überprüft, ob die TCP-Verbindung besteht
-int TCP_CheckConnection(uint8_t sock);
-
-#endif // __TCP_CLIENT_H__
+#endif // TCP_CLIENT_H

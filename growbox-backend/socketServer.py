@@ -1,35 +1,30 @@
 import socket
 
+# Server IP und Port
+HOST = '192.168.178.72'
+PORT = 8085
+
 def start_server():
-    # Erstelle einen TCP/IP-Socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
-    # Binde den Socket an die Adresse und den Port
-    server_address = ('0.0.0.0', 8085)  # Hört auf allen Netzwerk-Interfaces auf Port 8080
-    server_socket.bind(server_address)
-    
-    # Lausche auf eingehende Verbindungen
-    server_socket.listen(5)
-    print("Server is listening on port 8085...")
+    # Erstellt ein Socket-Objekt
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        # Bindet das Socket an die angegebene IP und den Port
+        server_socket.bind((HOST, PORT))
+        # Wartet auf eingehende Verbindungen
+        server_socket.listen()
+        print(f'Server gestartet. Wartet auf Verbindungen bei {HOST}:{PORT}...')
 
-    while True:
-        # Warte auf eine Verbindung
-        client_socket, client_address = server_socket.accept()
-        try:
-            print(f"Connection from {client_address}")
-
+        # Akzeptiert eine eingehende Verbindung
+        conn, addr = server_socket.accept()
+        with conn:
+            print(f'Verbunden mit {addr}')
             while True:
-                # Empfange die Daten
-                data = client_socket.recv(1024)
-                if data:
-                    print(f"Received: {data.decode()}")
-                    response = "Data received"
-                    client_socket.sendall(response.encode())
-                else:
+                # Empfängt Daten vom Client
+                data = conn.recv(1024)
+                if not data:
                     break
-        finally:
-            # Schließe die Verbindung
-            client_socket.close()
+                print(f'Erhalten: {data.decode()}')
+                # Sendet die empfangenen Daten zurück
+                conn.sendall(data)
 
 if __name__ == "__main__":
     start_server()
