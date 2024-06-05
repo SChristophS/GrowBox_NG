@@ -117,7 +117,7 @@ int main(void)
 
   uint8_t sn = SOCK_TCP; // Beispiel-Socket-Nummer, angenommen SOCK_TCP ist in network.h definiert
   uint8_t buf[DATA_BUF_SIZE];
-  uint8_t destip[4] = {192, 168, 178, 72}; // Beispiel-IP-Adresse
+  uint8_t destip[4] = {192, 168, 178, 25}; // Beispiel-IP-Adresse
   uint16_t destport = 8085; // Beispielport
 
   initialize_network();

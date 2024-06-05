@@ -5,6 +5,7 @@
 #include "wizchip_init.h"
 #include "uart_redirect.h"
 #include "socket.h" // Falls notwendig, anpassen je nach Bibliothek
+#include <string.h>
 
 // Network configuration
 wiz_NetInfo defaultNetInfo = {
@@ -16,11 +17,9 @@ wiz_NetInfo defaultNetInfo = {
     .dhcp = NETINFO_STATIC
 };
 
-
 uint8_t g_send_buf[DATA_BUF_SIZE];
 uint8_t g_recv_buf[DATA_BUF_SIZE];
 uint8_t data_buf[DATA_BUF_SIZE];
-
 
 uint8_t dns_server[4] = {168, 126, 63, 1}; // Secondary DNS server IP
 uint8_t Domain_IP[4] = {0}; // Translated IP address by DNS Server
@@ -37,7 +36,6 @@ void GetSTM32UID(char *uidStr) {
 
     sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]);
 }
-
 
 void print_network_information(void) {
     wizchip_getnetinfo(&defaultNetInfo);
@@ -110,7 +108,6 @@ void initialize_network(void) {
         ctlnetwork(CN_SET_NETINFO, &defaultNetInfo); // Set default static IP settings
     }
 
-
     printf("Register value after W5x00 initialize!\r\n");
     print_network_information();
 
@@ -136,12 +133,28 @@ void initialize_network(void) {
     printf("STM32 UID: %s\n", uidStr);
 }
 
+void upgrade_to_websocket(uint8_t sn) {
+    char request[] = "GET /chat HTTP/1.1\r\n"
+                     "Host: example.com\r\n"
+                     "Upgrade: websocket\r\n"
+                     "Connection: Upgrade\r\n"
+                     "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n"
+                     "Sec-WebSocket-Version: 13\r\n\r\n";
+
+    send(sn, (uint8_t*)request, strlen(request));
+
+    uint8_t response[1024];
+    int32_t len = recv(sn, response, sizeof(response));
+    response[len] = '\0';
+    printf("Server response: %s\n", response);
+
+    // Überprüfe die Antwort auf Erfolg
+}
 
 int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport)
 {
    int32_t ret; // return value for SOCK_ERRORs
-   uint16_t size = 0, sentsize=0;
-
+   uint16_t size = 0, sentsize = 0;
    static uint16_t any_port = 50000;
 
    switch(getSn_SR(sn))
@@ -151,6 +164,8 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
          {
             printf("%d:Connected to - %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
             setSn_IR(sn, Sn_IR_CON);
+            // Upgrade auf WebSocket
+            upgrade_to_websocket(sn);
          }
 
          if((size = getSn_RX_RSR(sn)) > 0)
@@ -169,7 +184,7 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
 
             while(size != sentsize)
             {
-                ret = send(sn, buf+sentsize, size-sentsize);
+                ret = send(sn, buf + sentsize, size - sentsize);
                 if(ret < 0)
                 {
                     close(sn);
@@ -178,26 +193,22 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
                 sentsize += ret;
             }
          }
-
-         // hier kommt jetzt die Ver
-
-
          break;
 
       case SOCK_CLOSE_WAIT :
          printf("%d:Socket CloseWait\n", sn);
-         if((ret=disconnect(sn)) != SOCK_OK) return ret;
+         if((ret = disconnect(sn)) != SOCK_OK) return ret;
          printf("%d:Socket Closed\n", sn);
          break;
 
       case SOCK_INIT :
          printf("%d:Try to connect to the %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
-         if( (ret = connect(sn, destip, destport)) != SOCK_OK) return ret;
+         if((ret = connect(sn, destip, destport)) != SOCK_OK) return ret;
          break;
 
       case SOCK_CLOSED:
          printf("%d:Socket closed, reopening...\n", sn);
-         if((ret=socket(sn, Sn_MR_TCP, any_port++, 0x00)) != sn)
+         if((ret = socket(sn, Sn_MR_TCP, any_port++, 0x00)) != sn)
          {
             if(any_port == 0xffff) any_port = 50000;
             return ret;
@@ -211,4 +222,3 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
    }
    return 1;
 }
-
