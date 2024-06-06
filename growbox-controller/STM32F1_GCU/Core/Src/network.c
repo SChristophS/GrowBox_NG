@@ -146,7 +146,7 @@ void upgrade_to_websocket(uint8_t sn) {
     uint8_t response[1024];
     int32_t len = recv(sn, response, sizeof(response));
     response[len] = '\0';
-    printf("Server response: %s\n", response);
+    printf("Server response: %s\r\n", response);
 
     // Überprüfe die Antwort auf Erfolg
 }
@@ -162,7 +162,7 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
       case SOCK_ESTABLISHED :
          if(getSn_IR(sn) & Sn_IR_CON)
          {
-            printf("%d:Connected to - %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
+            printf("%d:Connected to - %d.%d.%d.%d : %d\r\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
             setSn_IR(sn, Sn_IR_CON);
             // Upgrade auf WebSocket
             upgrade_to_websocket(sn);
@@ -178,7 +178,7 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
 
             // Drucke die empfangene Nachricht
             buf[size] = '\0'; // Stelle sicher, dass der Puffer nullterminiert ist
-            printf("Empfangene Nachricht: %s\n", buf);
+            printf("Empfangene Nachricht: %s\r\n", buf);
 
             sentsize = 0;
 
@@ -196,24 +196,24 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
          break;
 
       case SOCK_CLOSE_WAIT :
-         printf("%d:Socket CloseWait\n", sn);
+         printf("%d:Socket CloseWait\r\n", sn);
          if((ret = disconnect(sn)) != SOCK_OK) return ret;
-         printf("%d:Socket Closed\n", sn);
+         printf("%d:Socket Closed\r\n", sn);
          break;
 
       case SOCK_INIT :
-         printf("%d:Try to connect to the %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
+         printf("%d:Try to connect to the %d.%d.%d.%d : %d\r\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
          if((ret = connect(sn, destip, destport)) != SOCK_OK) return ret;
          break;
 
       case SOCK_CLOSED:
-         printf("%d:Socket closed, reopening...\n", sn);
+         printf("%d:Socket closed, reopening...\r\n", sn);
          if((ret = socket(sn, Sn_MR_TCP, any_port++, 0x00)) != sn)
          {
             if(any_port == 0xffff) any_port = 50000;
             return ret;
          }
-         printf("%d:TCP client loopback start\n", sn);
+         printf("%d:TCP client loopback start\r\n", sn);
          printf("%d:Socket opened\n", sn);
          break;
 
