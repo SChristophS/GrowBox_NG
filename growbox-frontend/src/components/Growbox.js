@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Button, Modal, Form } from "react-bootstrap";
 import GrowPlanServices from '../utility/GrowPlanServices';
+import socketService from '../utility/socketService';
 import './Growbox.css';
 
 function Growbox() {
@@ -21,9 +22,12 @@ function Growbox() {
 		// lade die Geräte sobald die Seite geöffnet wird
         fetchDevices();
 		
+		// Socket-Verbindung herstellen
+        socketService.connect('localhost', 8085, handleSocketMessage);
+		
 		return () => {
 			// Diese Funktion wird aufgerufen, wenn die Komponente demontiert wird
-			websocketRef.current.close(); // Schließe die WebSocket-Verbindung
+			socketService.disconnect(); // Schließe die Socket-Verbindung
 		};
     }, []);
 	
@@ -65,8 +69,13 @@ function Growbox() {
 			
 			console.log("fetchDevices: data.devices :");
 			console.log(data.devices);
+			
 			 // Initialisiere alle Geräte als nicht verbunden
 			setDevices(data.devices.map(device => ({ ...device, isConnected: false, controllerAlive: false })));
+			
+			// WebSocket-Verbindung initiieren
+            initiateSocketConnection();
+			
         } else {
             console.error("fetchDevices: HTTP-Error: " + response.status);
         }
@@ -151,10 +160,12 @@ function Growbox() {
 	
 	const AskControllerToConnect = (event) => {
 		// Stoppen des Event-Bubblings
+		
 		event.stopPropagation();
 
 		const requestData = { device_id: selectedDeviceId };
-		
+		console.log('RequestedData: ', requestData);
+		console.log("RequestedData:");
 		fetch(`${process.env.REACT_APP_API_URL}/ask-growbox-to-socket-connect`, {
 		  method: "POST",
 		  headers: {

@@ -23,16 +23,14 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "network.h"
-#include "mqtt_client.h"
 #include "uart_redirect.h"
 #include "wizchip_init.h"
 #include "wizchip_conf.h"
-#include "mqtt_client.h"
 #include <stdint.h>
 #include <stdbool.h> // Hinzufügen für den bool-Typ
-
-
-
+//#include "tcp_client.h"
+#include <string.h>
+#include <websocket_client.h.old>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,15 +44,12 @@
 //Receive Buffer Size define
 #define DATA_BUF_SIZE    2048
 
-//Socket number defines
-#define TCP_SOCKET    0
 
-unsigned char targetIP[4] = {192, 168, 178, 25}; // Beispiel IP
-unsigned int targetPort = 49154; // mqtt server port
-const char* const MQTT_USERNAME = "christoph";
-const char* const MQTT_PASSWORD = "Aprikose99";
 
 bool connect_to_backend = false;
+bool socket_connected = false;
+
+
 
 /* USER CODE END PD */
 
@@ -68,6 +63,7 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,27 +115,30 @@ int main(void)
   resetDeassert();
   HAL_Delay(300);
 
+  uint8_t sn = SOCK_TCP; // Beispiel-Socket-Nummer, angenommen SOCK_TCP ist in network.h definiert
+  uint8_t buf[DATA_BUF_SIZE];
+  uint8_t destip[4] = {192, 168, 178, 25}; // Beispiel-IP-Adresse
+  uint16_t destport = 8085; // Beispielport
+
   initialize_network();
-
-   Network n;
-   MQTTClient c;
-
-   mqtt_client_init(&n, &c, targetIP, targetPort, MQTT_USERNAME, MQTT_PASSWORD);
-
-
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //mqtt_client_yield(&c, 1000);
-	  MQTTYield(&c, 1000);
+	  int32_t result = loopback_tcpc(sn, buf, destip, destport);
 
-	  if (connect_to_backend){
-		  printf("Wuerde jetzt verbindung herstellen");
-	  };
+      // Bearbeite das Ergebnis
+      if (result < 0) {
+          printf("Loopback-TCP-Client-Operation fehlgeschlagen mit Fehlercode: %ld\n", (long)result);
+          break; // Oder handle den Fehler entsprechend, z.B. durch erneuten Verbindungsaufbau
+      } else {
+
+      }
+
+
+
 
     // Network connection handling code
     // Example: handling incoming connections or performing periodic tasks
