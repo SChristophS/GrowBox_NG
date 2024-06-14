@@ -1,0 +1,6 @@
+../Core/Src/network.c:31:6:GetSTM32UID	40	static
+../Core/Src/network.c:41:6:print_network_information	32	static
+../Core/Src/network.c:50:8:process_dhcp	16	static
+../Core/Src/network.c:79:8:process_dns	16	static
+../Core/Src/network.c:101:6:initialize_network	48	static
+../Core/Src/network.c:141:5:upgrade_to_websocket	1200	static

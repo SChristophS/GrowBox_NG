@@ -30,7 +30,10 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
-#include <websocket_client.h.old>
+#include "socket.h"
+#include "stdlib.h"
+#include "portmacro.h"
+#include "task.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,8 +44,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-//Receive Buffer Size define
-#define DATA_BUF_SIZE    2048
+
 
 
 
@@ -167,6 +169,18 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  if (aliveTaskHandle == NULL) {
+      printf("Failed to create aliveTask.\r\n");
+  } else {
+      printf("aliveTask created successfully.\r\n");
+  }
+
+  /* creation of webSocketTask */
+  if (webSocketTaskHandle == NULL) {
+      printf("Failed to create webSocketTask.\r\n");
+  } else {
+      printf("webSocketTask created successfully.\r\n");
+  }
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -348,6 +362,33 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void apply_mask(uint8_t *data, size_t len, const uint8_t *mask_key) {
+    for (size_t i = 0; i < len; i++) {
+        data[i] ^= mask_key[i % WEBSOCKET_MASK_KEY_SIZE];
+    }
+}
+
+void send_websocket_message(uint8_t socket, const char *message) {
+	printf("send_websocket_message\r\n");
+    size_t msg_len = strlen(message);
+    uint8_t mask_key[WEBSOCKET_MASK_KEY_SIZE];
+    for (int i = 0; i < WEBSOCKET_MASK_KEY_SIZE; i++) {
+        mask_key[i] = rand() % 256;
+    }
+
+    uint8_t masked_message[msg_len];
+    memcpy(masked_message, message, msg_len);
+    apply_mask(masked_message, msg_len, mask_key);
+
+    uint8_t frame[2 + WEBSOCKET_MASK_KEY_SIZE + msg_len];
+    frame[0] = 0x81; // FIN bit set, opcode for text frame
+    frame[1] = 0x80 | msg_len; // MASK bit set, payload length
+    memcpy(frame + 2, mask_key, WEBSOCKET_MASK_KEY_SIZE);
+    memcpy(frame + 2 + WEBSOCKET_MASK_KEY_SIZE, masked_message, msg_len);
+
+    send(socket, frame, sizeof(frame));
+}
+
 
 /* USER CODE END 4 */
 
@@ -361,13 +402,15 @@ static void MX_GPIO_Init(void)
 void StartaliveTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+
   /* Infinite loop */
   for(;;)
   {
     printf("ToggleLED\r\n");
 	HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
-	osDelay(999); // Warte 1 Sekunde
+	//osDelay(999); // Warte 1 Sekunde
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   }
   /* USER CODE END 5 */
@@ -383,15 +426,147 @@ void StartaliveTask(void *argument)
 void StartwebSocketTask(void *argument)
 {
   /* USER CODE BEGIN StartwebSocketTask */
-  uint8_t sn = SOCK_TCP; // Beispiel-Socket-Nummer, angenommen SOCK_TCP ist in network.h definiert
-  uint8_t buf[DATA_BUF_SIZE];
+	printf("StartwebSocketTask\r\n");
+	// otherwise the task freeze
+    uint8_t *buf = (uint8_t *)malloc(DATA_BUF_SIZE);
+    if (buf == NULL) {
+        printf("Failed to allocate memory for buffer\n");
+        return;
+    }
+
   uint8_t destip[4] = {192, 168, 178, 25}; // Beispiel-IP-Adresse
-  uint16_t destport = 8085; // Beispielport
+  uint16_t destport = 8085; // port
+
+  //uint32_t last_ping_time = 0;
+  static uint16_t any_port = 50000;
+  uint8_t currentSocketStatus = 0;
+
+  int websocket_upgraded = 0;
+
 
   /* Infinite loop */
   for(;;)
   {
-//    int32_t result = loopback_tcpc(sn, buf, destip, destport);
+
+      currentSocketStatus = getSn_SR(SOCK_DHCP);
+	  //printf("Status of Socket %d is: %d\r\n", SOCK_DHCP, currentSocketStatus);
+
+	  switch (currentSocketStatus) {
+	      case SOCK_CLOSED:
+	         printf("%d:Socket closed, reopening...\r\n", SOCK_DHCP);
+
+	         if((socket(SOCK_DHCP, Sn_MR_TCP, any_port++, 0x00)) != SOCK_DHCP)
+	         {
+	            if(any_port == 0xffff) any_port = 50000;
+	         }
+	         printf("%d:Socket opened\r\n", SOCK_DHCP);
+	         break;
+
+	      case SOCK_INIT:
+	          printf("Socket is initialized.\r\n");
+
+	          printf("%d:Try to connect to the %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
+
+	          if(connect(SOCK_DHCP, destip, destport) != SOCK_OK){
+	        	  printf("PROBLEM\r\n");
+	          }
+
+	          break;
+	      case SOCK_LISTEN:
+	          printf("Socket is in listen state.\n");
+	          break;
+
+
+
+
+
+
+
+
+	      case SOCK_ESTABLISHED:
+	          printf("Socket is established.\r\n");
+
+
+
+	          if (getSn_IR(SOCK_DHCP) & Sn_IR_CON) {
+	              printf("%d: Connected to - %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
+	              setSn_IR(SOCK_DHCP, Sn_IR_CON);
+//	              // Upgrade auf WebSocket
+//	              //upgrade_to_websocket(SOCK_DHCP);
+	          }
+
+
+
+              if (!websocket_upgraded) {
+                  if (upgrade_to_websocket(SOCK_DHCP) == 0) {
+                      printf("WebSocket upgrade successful.\n");
+                      websocket_upgraded = 1; // Upgrade als durchgeführt markieren
+                  } else {
+                      printf("WebSocket upgrade failed.\n");
+                      close(SOCK_DHCP);
+                      free(buf);
+                  }
+              }
+
+
+
+
+//              // Sende Ping-Nachricht
+//              uint32_t current_time = osKernelSysTick();
+//              if (current_time - last_ping_time >= PING_INTERVAL) {
+//                  send_websocket_message(SOCK_DHCP, "123");
+//                  last_ping_time = current_time;
+//                  printf("PingTime: %lu\r\n", last_ping_time);
+//              }
+
+
+              // Empfang von WebSocket-Daten
+              int32_t ret;
+              uint16_t size = 0;
+
+              if ((size = getSn_RX_RSR(SOCK_DHCP)) > 0) {
+                  if (size > DATA_BUF_SIZE) size = DATA_BUF_SIZE;
+
+                  ret = recv(SOCK_DHCP, buf, size);
+                  if (ret <= 0) {
+                      printf("Error receiving data. Socket closed.\n");
+                      close(SOCK_DHCP);
+                      free(buf);
+                  }
+                  size = (uint16_t) ret;
+
+                  buf[size] = '\0'; // Nullterminierung
+                  printf("Empfangene Nachricht: %s\n", buf);
+              }
+
+
+	          break;
+	      case SOCK_CLOSE_WAIT:
+	          printf("Socket is closing.\n");
+	          break;
+	      case SOCK_UDP:
+	          printf("Socket is in UDP mode.\n");
+	          break;
+	      case SOCK_IPRAW:
+	          printf("Socket is in IP RAW mode.\n");
+	          break;
+	      case SOCK_MACRAW:
+	          printf("Socket is in MAC RAW mode.\n");
+	          break;
+	      default:
+	          printf("Unknown socket status: %d\n", currentSocketStatus);
+	          break;
+	  }
+
+
+
+
+	  vTaskDelay(1000 / portTICK_PERIOD_MS); // Vermeide eine enge Schleife
+
+  }
+
+
+//    int32_t result = loopback_tcpc(SOCK_DHCP, buf, destip, destport);
 //
 //    // Bearbeite das Ergebnis
 //    if (result < 0) {
@@ -400,8 +575,8 @@ void StartwebSocketTask(void *argument)
 //        osDelay(1000); // Warte 1 Sekunde vor dem erneuten Versuch
 //    }
 
-    osDelay(100); // Vermeide eine enge Schleife
-  }
+//    osDelay(100); // Vermeide eine enge Schleife
+
   /* USER CODE END StartwebSocketTask */
 }
 
