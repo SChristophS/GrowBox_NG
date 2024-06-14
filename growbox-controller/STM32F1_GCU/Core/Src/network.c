@@ -69,6 +69,9 @@ int8_t process_dhcp(void) {
             break;
         }
     }
+
+    // Schließe den DHCP-Socket nach der Verwendung
+    close(SOCK_DHCP);
     return ret;
 }
 
@@ -130,10 +133,11 @@ void initialize_network(void) {
     // UID auslesen und anzeigen
     char uidStr[25];
     GetSTM32UID(uidStr);
-    printf("STM32 UID: %s\n", uidStr);
+    printf("STM32 UID: %s\r\n", uidStr);
 }
 
-void upgrade_to_websocket(uint8_t sn) {
+// Definition der Funktion
+int upgrade_to_websocket(uint8_t sn) {
     char request[] = "GET /chat HTTP/1.1\r\n"
                      "Host: example.com\r\n"
                      "Upgrade: websocket\r\n"
@@ -144,81 +148,23 @@ void upgrade_to_websocket(uint8_t sn) {
     send(sn, (uint8_t*)request, strlen(request));
 
     uint8_t response[1024];
-    int32_t len = recv(sn, response, sizeof(response));
+    int32_t len = recv(sn, response, sizeof(response) - 1); // Platz für Nullterminator lassen
+    if (len <= 0) {
+        printf("Error receiving response.\r\n");
+        return -1; // Fehler beim Empfangen der Antwort
+    }
+
     response[len] = '\0';
-    printf("Server response: %s\n", response);
+    printf("Server response: %s\r\n", response);
 
     // Überprüfe die Antwort auf Erfolg
-}
-
-int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport)
-{
-   int32_t ret; // return value for SOCK_ERRORs
-   uint16_t size = 0, sentsize = 0;
-   static uint16_t any_port = 50000;
-
-   switch(getSn_SR(sn))
-   {
-      case SOCK_ESTABLISHED :
-         if(getSn_IR(sn) & Sn_IR_CON)
-         {
-            printf("%d:Connected to - %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
-            setSn_IR(sn, Sn_IR_CON);
-            // Upgrade auf WebSocket
-            upgrade_to_websocket(sn);
-         }
-
-         if((size = getSn_RX_RSR(sn)) > 0)
-         {
-            if(size > DATA_BUF_SIZE) size = DATA_BUF_SIZE;
-            ret = recv(sn, buf, size);
-
-            if(ret <= 0) return ret;
-            size = (uint16_t) ret;
-
-            // Drucke die empfangene Nachricht
-            buf[size] = '\0'; // Stelle sicher, dass der Puffer nullterminiert ist
-            printf("Empfangene Nachricht: %s\n", buf);
-
-            sentsize = 0;
-
-            while(size != sentsize)
-            {
-                ret = send(sn, buf + sentsize, size - sentsize);
-                if(ret < 0)
-                {
-                    close(sn);
-                    return ret;
-                }
-                sentsize += ret;
-            }
-         }
-         break;
-
-      case SOCK_CLOSE_WAIT :
-         printf("%d:Socket CloseWait\n", sn);
-         if((ret = disconnect(sn)) != SOCK_OK) return ret;
-         printf("%d:Socket Closed\n", sn);
-         break;
-
-      case SOCK_INIT :
-         printf("%d:Try to connect to the %d.%d.%d.%d : %d\n", sn, destip[0], destip[1], destip[2], destip[3], destport);
-         if((ret = connect(sn, destip, destport)) != SOCK_OK) return ret;
-         break;
-
-      case SOCK_CLOSED:
-         printf("%d:Socket closed, reopening...\n", sn);
-         if((ret = socket(sn, Sn_MR_TCP, any_port++, 0x00)) != sn)
-         {
-            if(any_port == 0xffff) any_port = 50000;
-            return ret;
-         }
-         printf("%d:TCP client loopback start\n", sn);
-         printf("%d:Socket opened\n", sn);
-         break;
-
-      default:
-         break;
-   }
-   return 1;
+    if (strstr((char *)response, "HTTP/1.1 101 Switching Protocols") != NULL &&
+        strstr((char *)response, "Upgrade: websocket") != NULL &&
+        strstr((char *)response, "Connection: Upgrade") != NULL) {
+        printf("WebSocket upgrade successful.\r\n");
+        return 0; // Erfolg
+    } else {
+        printf("WebSocket upgrade failed.\r\n");
+        return -1; // Fehler
+    }
 }

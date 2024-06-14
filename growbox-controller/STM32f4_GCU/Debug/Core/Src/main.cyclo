@@ -1,0 +1,13 @@
+../Core/Src/main.c:101:5:main	3
+../Core/Src/main.c:223:6:SystemClock_Config	3
+../Core/Src/main.c:269:13:MX_SPI1_Init	2
+../Core/Src/main.c:307:13:MX_SPI2_Init	2
+../Core/Src/main.c:345:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:378:13:MX_USART3_UART_Init	2
+../Core/Src/main.c:411:13:MX_GPIO_Init	1
+../Core/Src/main.c:544:6:apply_mask	2
+../Core/Src/main.c:550:6:send_websocket_message	2
+../Core/Src/main.c:580:6:StartAliveTask	1
+../Core/Src/main.c:606:6:StartNetworkTask	22
+../Core/Src/main.c:771:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:788:6:Error_Handler	1

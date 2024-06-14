@@ -1,0 +1,6 @@
+../Core/Src/network.c:31:6:GetSTM32UID	1
+../Core/Src/network.c:41:6:print_network_information	1
+../Core/Src/network.c:50:8:process_dhcp	5
+../Core/Src/network.c:79:8:process_dns	4
+../Core/Src/network.c:101:6:initialize_network	5
+../Core/Src/network.c:141:5:upgrade_to_websocket	5
