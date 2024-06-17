@@ -18,6 +18,7 @@ int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destpo
 
 #define DATA_BUF_SIZE 2048
 
+#define JSON_TOKENS 128
 
 #define SOCK_DHCP 3
 #define SOCK_DNS 4

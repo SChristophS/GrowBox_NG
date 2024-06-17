@@ -30,9 +30,10 @@
 #include "wizchip_init.h"
 #include <stdint.h>
 #include <stdbool.h>
-#include <string.h>
 #include "socket.h"
 #include "stdlib.h"
+#include "jsmn.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -555,6 +556,55 @@ void send_websocket_message(uint8_t socket, const char *message) {
     send(socket, frame, sizeof(frame));
 }
 
+// Hilfsfunktion zum Vergleichen von JSON-Schlüsseln
+int jsoneq(const char* json, jsmntok_t* tok, const char* s) {
+    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
+        strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+        return 0;
+    }
+    return -1;
+}
+
+
+void process_received_data(const char* data) {
+    jsmn_parser parser;
+    jsmntok_t tokens[JSON_TOKENS];
+    int token_count;
+
+    printf("Raw data: %s\n", data); // Ausgabe der empfangenen Rohdaten
+
+    jsmn_init(&parser);
+    token_count = jsmn_parse(&parser, data, strlen(data), tokens, JSON_TOKENS);
+
+    if (token_count < 0) {
+        printf("Failed to parse JSON: %d\n", token_count);
+        return;
+    }
+
+    // Prüfe, ob das erste Token ein Objekt ist
+    if (token_count < 1 || tokens[0].type != JSMN_OBJECT) {
+        printf("Object expected\n");
+        return;
+    }
+
+
+    for (int i = 1; i < token_count; i++) {
+        if (jsoneq(data, &tokens[i], "message_type") == 0) {
+            printf("Message Type: %.*s\n", tokens[i + 1].end - tokens[i + 1].start, data + tokens[i + 1].start);
+            i++;
+        }
+    }
+}
+
+// Funktion zum Hex-Dump
+void print_hex(const uint8_t *data, uint16_t len) {
+    for (uint16_t i = 0; i < len; i++) {
+        printf("%02X ", data[i]);
+    }
+    printf("\n");
+}
+
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartAliveTask */
@@ -671,7 +721,6 @@ void StartNetworkTask(void *argument)
                   } else {
                       printf("WebSocket upgrade failed.\n");
                       close(SOCK_DHCP);
-                      free(buf);
                   }
               }
 
@@ -692,19 +741,33 @@ void StartNetworkTask(void *argument)
               uint16_t size = 0;
 
               if ((size = getSn_RX_RSR(SOCK_DHCP)) > 0) {
-                  if (size > DATA_BUF_SIZE) size = DATA_BUF_SIZE;
+                  if (size > DATA_BUF_SIZE - 1) size = DATA_BUF_SIZE - 1; // Reserve 1 byte for null termination
+
+                  // Clear the buffer before receiving data
+                  memset(buf, 0, DATA_BUF_SIZE);
 
                   ret = recv(SOCK_DHCP, buf, size);
                   if (ret <= 0) {
                       printf("Error receiving data. Socket closed.\n");
                       close(SOCK_DHCP);
-                      free(buf);
-                  }
-                  size = (uint16_t) ret;
+                  } else {
+                      buf[ret] = '\0'; // Null termination
+                      printf("Empfangene Nachricht: %s\r\n", buf);
 
-                  buf[size] = '\0'; // Nullterminierung
-                  printf("Empfangene Nachricht: %s\n", buf);
+                      // Print hex dump of the received data
+                      printf("Hex-Dump der empfangenen Daten: ");
+                      print_hex(buf, ret);
+
+                      // Skip the first two bytes which might be WebSocket protocol headers
+                      char *payload = (char *)(buf + 2);
+                      printf("Bereinigte Nachricht: %s\r\n", payload);
+
+                      process_received_data(payload);
+
+                  }
               }
+              free(buf);
+
 
 
 	          break;

@@ -1,0 +1,10 @@
+// schalte Pumpe 1 an
+
+{
+  "message_type": "control_command",
+  "payload": {
+    "target": "pump1",
+    "action": "switch",
+    "value": "on"
+  }
+}
