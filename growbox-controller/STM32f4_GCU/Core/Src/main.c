@@ -26,7 +26,6 @@
 #include <string.h>
 #include "stm32f4xx_hal.h"
 #include "uart_redirect.h"
-#include "network.h"
 #include "wizchip_init.h"
 #include <stdint.h>
 #include <stdbool.h>
@@ -34,15 +33,24 @@
 #include "stdlib.h"
 #include "jsmn.h"
 
+/* Tasks */
+#include "task_network.h"
+#include "task_message.h"
+#include "task_alive.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+// Event-Bits für Benachrichtigung
+#define WATER_LEVEL_CHANGED_BIT (1 << 0)
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+// Globale Variablen für Sollzustand
+volatile int sollzustandWasserbecken = 0; // 0 = leer, 1 = voll
 
 /* USER CODE END PD */
 
@@ -72,6 +80,52 @@ const osThreadAttr_t NetworkTask_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for WaterController */
+osThreadId_t WaterControllerHandle;
+const osThreadAttr_t WaterController_attributes = {
+  .name = "WaterController",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
+};
+/* Definitions for WatcherTask */
+osThreadId_t WatcherTaskHandle;
+const osThreadAttr_t WatcherTask_attributes = {
+  .name = "WatcherTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal2,
+};
+/* Definitions for MessageTask */
+osThreadId_t MessageTaskHandle;
+const osThreadAttr_t MessageTask_attributes = {
+  .name = "MessageTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal3,
+};
+/* Definitions for xNetworkQueue */
+osMessageQueueId_t xNetworkQueueHandle;
+const osMessageQueueAttr_t xNetworkQueue_attributes = {
+  .name = "xNetworkQueue"
+};
+/* Definitions for xMessageQueue */
+osMessageQueueId_t xMessageQueueHandle;
+const osMessageQueueAttr_t xMessageQueue_attributes = {
+  .name = "xMessageQueue"
+};
+/* Definitions for xWaterControllerQueue */
+osMessageQueueId_t xWaterControllerQueueHandle;
+const osMessageQueueAttr_t xWaterControllerQueue_attributes = {
+  .name = "xWaterControllerQueue"
+};
+/* Definitions for xMutex */
+osMutexId_t xMutexHandle;
+const osMutexAttr_t xMutex_attributes = {
+  .name = "xMutex"
+};
+/* Definitions for xEventGroup */
+osEventFlagsId_t xEventGroupHandle;
+const osEventFlagsAttr_t xEventGroup_attributes = {
+  .name = "xEventGroup"
+};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -85,6 +139,9 @@ static void MX_USART3_UART_Init(void);
 static void MX_SPI2_Init(void);
 void StartAliveTask(void *argument);
 void StartNetworkTask(void *argument);
+void startWaterControllerTask(void *argument);
+void StartWatcherTask(void *argument);
+void StartMessageTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -143,6 +200,9 @@ int main(void)
 
   /* Init scheduler */
   osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of xMutex */
+  xMutexHandle = osMutexNew(&xMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -156,6 +216,16 @@ int main(void)
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of xNetworkQueue */
+  xNetworkQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xNetworkQueue_attributes);
+
+  /* creation of xMessageQueue */
+  xMessageQueueHandle = osMessageQueueNew (16, 16, &xMessageQueue_attributes);
+
+  /* creation of xWaterControllerQueue */
+  xWaterControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xWaterControllerQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -167,22 +237,21 @@ int main(void)
   /* creation of NetworkTask */
   NetworkTaskHandle = osThreadNew(StartNetworkTask, NULL, &NetworkTask_attributes);
 
+  /* creation of WaterController */
+  WaterControllerHandle = osThreadNew(startWaterControllerTask, NULL, &WaterController_attributes);
+
+  /* creation of WatcherTask */
+  WatcherTaskHandle = osThreadNew(StartWatcherTask, NULL, &WatcherTask_attributes);
+
+  /* creation of MessageTask */
+  MessageTaskHandle = osThreadNew(StartMessageTask, NULL, &MessageTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  if (AliveTaskHandle == NULL) {
-      printf("Failed to create aliveTask.\r\n");
-  } else {
-      printf("aliveTask created successfully.\r\n");
-  }
-
-  /* creation of webSocketTask */
-  if (NetworkTaskHandle == NULL) {
-      printf("Failed to create NetworkTask.\r\n");
-  } else {
-      printf("NetworkTask created successfully.\r\n");
-  }
-
   /* USER CODE END RTOS_THREADS */
+
+  /* creation of xEventGroup */
+  xEventGroupHandle = osEventFlagsNew(&xEventGroup_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
@@ -614,24 +683,7 @@ void print_hex(const uint8_t *data, uint16_t len) {
   * @retval None
   */
 /* USER CODE END Header_StartAliveTask */
-void StartAliveTask(void *argument)
-{
-  /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-	    printf("ToggleLED\r\n");
-		//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
 
-		//osDelay(999); // Warte 1 Sekunde
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
-  /* USER CODE END 5 */
-}
 
 /* USER CODE BEGIN Header_StartNetworkTask */
 /**
@@ -639,176 +691,52 @@ void StartAliveTask(void *argument)
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartNetworkTask */
-void StartNetworkTask(void *argument)
+
+
+/* USER CODE BEGIN Header_startWaterControllerTask */
+/**
+* @brief Function implementing the WaterController thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_startWaterControllerTask */
+void startWaterControllerTask(void *argument)
 {
-  /* USER CODE BEGIN StartwebSocketTask */
-	printf("StartwebSocketTask\r\n");
-	// otherwise the task freeze
-    uint8_t *buf = (uint8_t *)malloc(DATA_BUF_SIZE);
-    if (buf == NULL) {
-        printf("Failed to allocate memory for buffer\n");
-        return;
-    }
-
-  uint8_t destip[4] = {192, 168, 178, 25}; // Beispiel-IP-Adresse
-  uint16_t destport = 8085; // port
-
-  //uint32_t last_ping_time = 0;
-  static uint16_t any_port = 50000;
-  uint8_t currentSocketStatus = 0;
-
-  int websocket_upgraded = 0;
-
-
+  /* USER CODE BEGIN startWaterControllerTask */
   /* Infinite loop */
   for(;;)
   {
-
-      currentSocketStatus = getSn_SR(SOCK_DHCP);
-	  //printf("Status of Socket %d is: %d\r\n", SOCK_DHCP, currentSocketStatus);
-
-	  switch (currentSocketStatus) {
-	      case SOCK_CLOSED:
-	         printf("%d:Socket closed, reopening...\r\n", SOCK_DHCP);
-
-	         if((socket(SOCK_DHCP, Sn_MR_TCP, any_port++, 0x00)) != SOCK_DHCP)
-	         {
-	            if(any_port == 0xffff) any_port = 50000;
-	         }
-	         printf("%d:Socket opened\r\n", SOCK_DHCP);
-	         break;
-
-	      case SOCK_INIT:
-	          printf("Socket is initialized.\r\n");
-
-	          printf("%d:Try to connect to the %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
-
-	          if(connect(SOCK_DHCP, destip, destport) != SOCK_OK){
-	        	  printf("PROBLEM\r\n");
-	          }
-
-	          break;
-	      case SOCK_LISTEN:
-	          printf("Socket is in listen state.\n");
-	          break;
-
-
-
-
-
-
-
-
-	      case SOCK_ESTABLISHED:
-	          printf("Socket is established.\r\n");
-
-
-
-	          if (getSn_IR(SOCK_DHCP) & Sn_IR_CON) {
-	              printf("%d: Connected to - %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
-	              setSn_IR(SOCK_DHCP, Sn_IR_CON);
-//	              // Upgrade auf WebSocket
-//	              //upgrade_to_websocket(SOCK_DHCP);
-	          }
-
-
-
-              if (!websocket_upgraded) {
-                  if (upgrade_to_websocket(SOCK_DHCP) == 0) {
-                      printf("WebSocket upgrade successful.\n");
-                      websocket_upgraded = 1; // Upgrade als durchgeführt markieren
-                  } else {
-                      printf("WebSocket upgrade failed.\n");
-                      close(SOCK_DHCP);
-                  }
-              }
-
-
-
-
-//              // Sende Ping-Nachricht
-//              uint32_t current_time = osKernelSysTick();
-//              if (current_time - last_ping_time >= PING_INTERVAL) {
-//                  send_websocket_message(SOCK_DHCP, "123");
-//                  last_ping_time = current_time;
-//                  printf("PingTime: %lu\r\n", last_ping_time);
-//              }
-
-
-              // Empfang von WebSocket-Daten
-              int32_t ret;
-              uint16_t size = 0;
-
-              if ((size = getSn_RX_RSR(SOCK_DHCP)) > 0) {
-                  if (size > DATA_BUF_SIZE - 1) size = DATA_BUF_SIZE - 1; // Reserve 1 byte for null termination
-
-                  // Clear the buffer before receiving data
-                  memset(buf, 0, DATA_BUF_SIZE);
-
-                  ret = recv(SOCK_DHCP, buf, size);
-                  if (ret <= 0) {
-                      printf("Error receiving data. Socket closed.\n");
-                      close(SOCK_DHCP);
-                  } else {
-                      buf[ret] = '\0'; // Null termination
-                      printf("Empfangene Nachricht: %s\r\n", buf);
-
-                      // Print hex dump of the received data
-                      printf("Hex-Dump der empfangenen Daten: ");
-                      print_hex(buf, ret);
-
-                      // Skip the first two bytes which might be WebSocket protocol headers
-                      char *payload = (char *)(buf + 2);
-                      printf("Bereinigte Nachricht: %s\r\n", payload);
-
-                      process_received_data(payload);
-
-                  }
-              }
-              free(buf);
-
-
-
-	          break;
-	      case SOCK_CLOSE_WAIT:
-	          printf("Socket is closing.\n");
-	          break;
-	      case SOCK_UDP:
-	          printf("Socket is in UDP mode.\n");
-	          break;
-	      case SOCK_IPRAW:
-	          printf("Socket is in IP RAW mode.\n");
-	          break;
-	      case SOCK_MACRAW:
-	          printf("Socket is in MAC RAW mode.\n");
-	          break;
-	      default:
-	          printf("Unknown socket status: %d\n", currentSocketStatus);
-	          break;
-	  }
-
-
-
-
-	  vTaskDelay(1000 / portTICK_PERIOD_MS); // Vermeide eine enge Schleife
-
+    osDelay(1);
   }
-
-
-//    int32_t result = loopback_tcpc(SOCK_DHCP, buf, destip, destport);
-//
-//    // Bearbeite das Ergebnis
-//    if (result < 0) {
-//        printf("Loopback-TCP-Client-Operation fehlgeschlagen mit Fehlercode: %ld\r\n", (long)result);
-//        // Delay to avoid tight loop
-//        osDelay(1000); // Warte 1 Sekunde vor dem erneuten Versuch
-//    }
-
-//    osDelay(100); // Vermeide eine enge Schleife
-
-  /* USER CODE END StartNetworkTask */
+  /* USER CODE END startWaterControllerTask */
 }
+
+/* USER CODE BEGIN Header_StartWatcherTask */
+/**
+* @brief Function implementing the WatcherTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartWatcherTask */
+void StartWatcherTask(void *argument)
+{
+  /* USER CODE BEGIN StartWatcherTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartWatcherTask */
+}
+
+/* USER CODE BEGIN Header_StartMessageTask */
+/**
+* @brief Function implementing the MessageTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartMessageTask */
+
 
 /**
   * @brief  Period elapsed callback in non blocking mode

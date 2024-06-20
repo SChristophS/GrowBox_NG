@@ -3,8 +3,8 @@
 {
   "message_type": "control_command",
   "payload": {
-    "target": "pump1",
-    "action": "switch",
-    "value": "on"
+    "target": "sollzustandWasserbecken",
+    "action": "change",
+    "value": "1"
   }
 }
