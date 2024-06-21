@@ -1,4 +1,3 @@
-#include "task_message.h"
 #include "cmsis_os.h"
 #include <stdio.h>
 #include <string.h>
@@ -12,7 +11,7 @@ void StartAliveTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  printf("ToggleLED\r\n");
+	  printf("task_alive.c:\tToggleLED\r\n");
 	  		//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 	  	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
 	  	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);

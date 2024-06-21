@@ -1,10 +1,10 @@
-// schalte Pumpe 1 an
+// Ändere Zustand vom wasserbeckenZustand
 
 {
   "message_type": "control_command",
   "payload": {
-    "target": "sollzustandWasserbecken",
+    "target": "wasserbeckenZustand",
     "action": "change",
-    "value": "1"
+    "value": true
   }
 }

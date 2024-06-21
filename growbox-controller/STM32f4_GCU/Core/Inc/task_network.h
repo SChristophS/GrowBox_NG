@@ -7,7 +7,8 @@
 extern osMessageQueueId_t xMessageQueueHandle;
 
 
-#define DATA_BUF_SIZE 2048
+//#define DATA_BUF_SIZE 2048
+#define DATA_BUF_SIZE 8096
 #define SOCK_DHCP 3
 
 

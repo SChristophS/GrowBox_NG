@@ -31,26 +31,27 @@
 #include <stdbool.h>
 #include "socket.h"
 #include "stdlib.h"
-#include "jsmn.h"
+
+
+#include "controller_state.h"
 
 /* Tasks */
 #include "task_network.h"
-#include "task_message.h"
 #include "task_alive.h"
+#include "task_watcher.h"
+#include "task_water_controller.h"
+
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-// Event-Bits für Benachrichtigung
-#define WATER_LEVEL_CHANGED_BIT (1 << 0)
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-// Globale Variablen für Sollzustand
-volatile int sollzustandWasserbecken = 0; // 0 = leer, 1 = voll
 
 /* USER CODE END PD */
 
@@ -77,8 +78,8 @@ const osThreadAttr_t AliveTask_attributes = {
 osThreadId_t NetworkTaskHandle;
 const osThreadAttr_t NetworkTask_attributes = {
   .name = "NetworkTask",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for WaterController */
 osThreadId_t WaterControllerHandle;
@@ -94,39 +95,29 @@ const osThreadAttr_t WatcherTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityBelowNormal2,
 };
-/* Definitions for MessageTask */
-osThreadId_t MessageTaskHandle;
-const osThreadAttr_t MessageTask_attributes = {
-  .name = "MessageTask",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal3,
-};
 /* Definitions for xNetworkQueue */
 osMessageQueueId_t xNetworkQueueHandle;
 const osMessageQueueAttr_t xNetworkQueue_attributes = {
   .name = "xNetworkQueue"
-};
-/* Definitions for xMessageQueue */
-osMessageQueueId_t xMessageQueueHandle;
-const osMessageQueueAttr_t xMessageQueue_attributes = {
-  .name = "xMessageQueue"
 };
 /* Definitions for xWaterControllerQueue */
 osMessageQueueId_t xWaterControllerQueueHandle;
 const osMessageQueueAttr_t xWaterControllerQueue_attributes = {
   .name = "xWaterControllerQueue"
 };
-/* Definitions for xMutex */
-osMutexId_t xMutexHandle;
-const osMutexAttr_t xMutex_attributes = {
-  .name = "xMutex"
+/* Definitions for gControllerStateMutex */
+osMutexId_t gControllerStateMutexHandle;
+const osMutexAttr_t gControllerStateMutex_attributes = {
+  .name = "gControllerStateMutex"
 };
-/* Definitions for xEventGroup */
-osEventFlagsId_t xEventGroupHandle;
-const osEventFlagsAttr_t xEventGroup_attributes = {
-  .name = "xEventGroup"
+/* Definitions for gControllerEventGroup */
+osEventFlagsId_t gControllerEventGroupHandle;
+const osEventFlagsAttr_t gControllerEventGroup_attributes = {
+  .name = "gControllerEventGroup"
 };
 /* USER CODE BEGIN PV */
+
+
 
 /* USER CODE END PV */
 
@@ -141,10 +132,9 @@ void StartAliveTask(void *argument);
 void StartNetworkTask(void *argument);
 void startWaterControllerTask(void *argument);
 void StartWatcherTask(void *argument);
-void StartMessageTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+void InitControllerState(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -187,7 +177,7 @@ int main(void)
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("\t - W5x00 Project - \r\n");
+  printf("main.c:\t - W5x00 Project - \r\n");
   resetAssert();
   HAL_Delay(300);
   resetDeassert();
@@ -196,13 +186,17 @@ int main(void)
   // configure network
   initialize_network();
 
+  // Initialisiere die Mutex und EventGroup
+  gControllerStateMutex = osMutexNew(NULL);
+  gControllerEventGroup = osEventFlagsNew(NULL);
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
   osKernelInitialize();
   /* Create the mutex(es) */
-  /* creation of xMutex */
-  xMutexHandle = osMutexNew(&xMutex_attributes);
+  /* creation of gControllerStateMutex */
+  gControllerStateMutexHandle = osMutexNew(&gControllerStateMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -219,9 +213,6 @@ int main(void)
   /* Create the queue(s) */
   /* creation of xNetworkQueue */
   xNetworkQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xNetworkQueue_attributes);
-
-  /* creation of xMessageQueue */
-  xMessageQueueHandle = osMessageQueueNew (16, 16, &xMessageQueue_attributes);
 
   /* creation of xWaterControllerQueue */
   xWaterControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xWaterControllerQueue_attributes);
@@ -243,15 +234,12 @@ int main(void)
   /* creation of WatcherTask */
   WatcherTaskHandle = osThreadNew(StartWatcherTask, NULL, &WatcherTask_attributes);
 
-  /* creation of MessageTask */
-  MessageTaskHandle = osThreadNew(StartMessageTask, NULL, &MessageTask_attributes);
-
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
-  /* creation of xEventGroup */
-  xEventGroupHandle = osEventFlagsNew(&xEventGroup_attributes);
+  /* creation of gControllerEventGroup */
+  gControllerEventGroupHandle = osEventFlagsNew(&gControllerEventGroup_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
@@ -598,80 +586,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void apply_mask(uint8_t *data, size_t len, const uint8_t *mask_key) {
-    for (size_t i = 0; i < len; i++) {
-        data[i] ^= mask_key[i % WEBSOCKET_MASK_KEY_SIZE];
-    }
-}
 
-void send_websocket_message(uint8_t socket, const char *message) {
-	printf("send_websocket_message\r\n");
-    size_t msg_len = strlen(message);
-    uint8_t mask_key[WEBSOCKET_MASK_KEY_SIZE];
-    for (int i = 0; i < WEBSOCKET_MASK_KEY_SIZE; i++) {
-        mask_key[i] = rand() % 256;
-    }
-
-    uint8_t masked_message[msg_len];
-    memcpy(masked_message, message, msg_len);
-    apply_mask(masked_message, msg_len, mask_key);
-
-    uint8_t frame[2 + WEBSOCKET_MASK_KEY_SIZE + msg_len];
-    frame[0] = 0x81; // FIN bit set, opcode for text frame
-    frame[1] = 0x80 | msg_len; // MASK bit set, payload length
-    memcpy(frame + 2, mask_key, WEBSOCKET_MASK_KEY_SIZE);
-    memcpy(frame + 2 + WEBSOCKET_MASK_KEY_SIZE, masked_message, msg_len);
-
-    send(socket, frame, sizeof(frame));
-}
-
-// Hilfsfunktion zum Vergleichen von JSON-Schlüsseln
-int jsoneq(const char* json, jsmntok_t* tok, const char* s) {
-    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
-        strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
-        return 0;
-    }
-    return -1;
-}
-
-
-void process_received_data(const char* data) {
-    jsmn_parser parser;
-    jsmntok_t tokens[JSON_TOKENS];
-    int token_count;
-
-    printf("Raw data: %s\n", data); // Ausgabe der empfangenen Rohdaten
-
-    jsmn_init(&parser);
-    token_count = jsmn_parse(&parser, data, strlen(data), tokens, JSON_TOKENS);
-
-    if (token_count < 0) {
-        printf("Failed to parse JSON: %d\n", token_count);
-        return;
-    }
-
-    // Prüfe, ob das erste Token ein Objekt ist
-    if (token_count < 1 || tokens[0].type != JSMN_OBJECT) {
-        printf("Object expected\n");
-        return;
-    }
-
-
-    for (int i = 1; i < token_count; i++) {
-        if (jsoneq(data, &tokens[i], "message_type") == 0) {
-            printf("Message Type: %.*s\n", tokens[i + 1].end - tokens[i + 1].start, data + tokens[i + 1].start);
-            i++;
-        }
-    }
-}
-
-// Funktion zum Hex-Dump
-void print_hex(const uint8_t *data, uint16_t len) {
-    for (uint16_t i = 0; i < len; i++) {
-        printf("%02X ", data[i]);
-    }
-    printf("\n");
-}
 
 
 /* USER CODE END 4 */
@@ -682,7 +597,6 @@ void print_hex(const uint8_t *data, uint16_t len) {
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartAliveTask */
 
 
 /* USER CODE BEGIN Header_StartNetworkTask */
@@ -691,6 +605,7 @@ void print_hex(const uint8_t *data, uint16_t len) {
 * @param argument: Not used
 * @retval None
 */
+/* USER CODE END Header_StartNetworkTask */
 
 
 /* USER CODE BEGIN Header_startWaterControllerTask */
@@ -700,16 +615,7 @@ void print_hex(const uint8_t *data, uint16_t len) {
 * @retval None
 */
 /* USER CODE END Header_startWaterControllerTask */
-void startWaterControllerTask(void *argument)
-{
-  /* USER CODE BEGIN startWaterControllerTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END startWaterControllerTask */
-}
+
 
 /* USER CODE BEGIN Header_StartWatcherTask */
 /**
@@ -718,24 +624,6 @@ void startWaterControllerTask(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartWatcherTask */
-void StartWatcherTask(void *argument)
-{
-  /* USER CODE BEGIN StartWatcherTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartWatcherTask */
-}
-
-/* USER CODE BEGIN Header_StartMessageTask */
-/**
-* @brief Function implementing the MessageTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartMessageTask */
 
 
 /**
