@@ -26,13 +26,21 @@
 #include <string.h>
 #include "stm32f4xx_hal.h"
 #include "uart_redirect.h"
-#include "network.h"
 #include "wizchip_init.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include "socket.h"
 #include "stdlib.h"
-#include "jsmn.h"
+
+
+#include "controller_state.h"
+
+/* Tasks */
+#include "task_network.h"
+#include "task_alive.h"
+#include "task_watcher.h"
+#include "task_water_controller.h"
+
 
 /* USER CODE END Includes */
 
@@ -43,6 +51,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
 
 /* USER CODE END PD */
 
@@ -69,10 +78,46 @@ const osThreadAttr_t AliveTask_attributes = {
 osThreadId_t NetworkTaskHandle;
 const osThreadAttr_t NetworkTask_attributes = {
   .name = "NetworkTask",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+/* Definitions for WaterController */
+osThreadId_t WaterControllerHandle;
+const osThreadAttr_t WaterController_attributes = {
+  .name = "WaterController",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
+};
+/* Definitions for WatcherTask */
+osThreadId_t WatcherTaskHandle;
+const osThreadAttr_t WatcherTask_attributes = {
+  .name = "WatcherTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal2,
+};
+/* Definitions for xNetworkQueue */
+osMessageQueueId_t xNetworkQueueHandle;
+const osMessageQueueAttr_t xNetworkQueue_attributes = {
+  .name = "xNetworkQueue"
+};
+/* Definitions for xWaterControllerQueue */
+osMessageQueueId_t xWaterControllerQueueHandle;
+const osMessageQueueAttr_t xWaterControllerQueue_attributes = {
+  .name = "xWaterControllerQueue"
+};
+/* Definitions for gControllerStateMutex */
+osMutexId_t gControllerStateMutexHandle;
+const osMutexAttr_t gControllerStateMutex_attributes = {
+  .name = "gControllerStateMutex"
+};
+/* Definitions for gControllerEventGroup */
+osEventFlagsId_t gControllerEventGroupHandle;
+const osEventFlagsAttr_t gControllerEventGroup_attributes = {
+  .name = "gControllerEventGroup"
 };
 /* USER CODE BEGIN PV */
+
+
 
 /* USER CODE END PV */
 
@@ -85,9 +130,11 @@ static void MX_USART3_UART_Init(void);
 static void MX_SPI2_Init(void);
 void StartAliveTask(void *argument);
 void StartNetworkTask(void *argument);
+void startWaterControllerTask(void *argument);
+void StartWatcherTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+void InitControllerState(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -130,7 +177,7 @@ int main(void)
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("\t - W5x00 Project - \r\n");
+  printf("main.c:\t - W5x00 Project - \r\n");
   resetAssert();
   HAL_Delay(300);
   resetDeassert();
@@ -139,10 +186,17 @@ int main(void)
   // configure network
   initialize_network();
 
+  // Initialisiere die Mutex und EventGroup
+  gControllerStateMutex = osMutexNew(NULL);
+  gControllerEventGroup = osEventFlagsNew(NULL);
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
   osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of gControllerStateMutex */
+  gControllerStateMutexHandle = osMutexNew(&gControllerStateMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -156,6 +210,13 @@ int main(void)
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of xNetworkQueue */
+  xNetworkQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xNetworkQueue_attributes);
+
+  /* creation of xWaterControllerQueue */
+  xWaterControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xWaterControllerQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -167,22 +228,18 @@ int main(void)
   /* creation of NetworkTask */
   NetworkTaskHandle = osThreadNew(StartNetworkTask, NULL, &NetworkTask_attributes);
 
+  /* creation of WaterController */
+  WaterControllerHandle = osThreadNew(startWaterControllerTask, NULL, &WaterController_attributes);
+
+  /* creation of WatcherTask */
+  WatcherTaskHandle = osThreadNew(StartWatcherTask, NULL, &WatcherTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  if (AliveTaskHandle == NULL) {
-      printf("Failed to create aliveTask.\r\n");
-  } else {
-      printf("aliveTask created successfully.\r\n");
-  }
-
-  /* creation of webSocketTask */
-  if (NetworkTaskHandle == NULL) {
-      printf("Failed to create NetworkTask.\r\n");
-  } else {
-      printf("NetworkTask created successfully.\r\n");
-  }
-
   /* USER CODE END RTOS_THREADS */
+
+  /* creation of gControllerEventGroup */
+  gControllerEventGroupHandle = osEventFlagsNew(&gControllerEventGroup_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
@@ -529,80 +586,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void apply_mask(uint8_t *data, size_t len, const uint8_t *mask_key) {
-    for (size_t i = 0; i < len; i++) {
-        data[i] ^= mask_key[i % WEBSOCKET_MASK_KEY_SIZE];
-    }
-}
 
-void send_websocket_message(uint8_t socket, const char *message) {
-	printf("send_websocket_message\r\n");
-    size_t msg_len = strlen(message);
-    uint8_t mask_key[WEBSOCKET_MASK_KEY_SIZE];
-    for (int i = 0; i < WEBSOCKET_MASK_KEY_SIZE; i++) {
-        mask_key[i] = rand() % 256;
-    }
-
-    uint8_t masked_message[msg_len];
-    memcpy(masked_message, message, msg_len);
-    apply_mask(masked_message, msg_len, mask_key);
-
-    uint8_t frame[2 + WEBSOCKET_MASK_KEY_SIZE + msg_len];
-    frame[0] = 0x81; // FIN bit set, opcode for text frame
-    frame[1] = 0x80 | msg_len; // MASK bit set, payload length
-    memcpy(frame + 2, mask_key, WEBSOCKET_MASK_KEY_SIZE);
-    memcpy(frame + 2 + WEBSOCKET_MASK_KEY_SIZE, masked_message, msg_len);
-
-    send(socket, frame, sizeof(frame));
-}
-
-// Hilfsfunktion zum Vergleichen von JSON-Schlüsseln
-int jsoneq(const char* json, jsmntok_t* tok, const char* s) {
-    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
-        strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
-        return 0;
-    }
-    return -1;
-}
-
-
-void process_received_data(const char* data) {
-    jsmn_parser parser;
-    jsmntok_t tokens[JSON_TOKENS];
-    int token_count;
-
-    printf("Raw data: %s\n", data); // Ausgabe der empfangenen Rohdaten
-
-    jsmn_init(&parser);
-    token_count = jsmn_parse(&parser, data, strlen(data), tokens, JSON_TOKENS);
-
-    if (token_count < 0) {
-        printf("Failed to parse JSON: %d\n", token_count);
-        return;
-    }
-
-    // Prüfe, ob das erste Token ein Objekt ist
-    if (token_count < 1 || tokens[0].type != JSMN_OBJECT) {
-        printf("Object expected\n");
-        return;
-    }
-
-
-    for (int i = 1; i < token_count; i++) {
-        if (jsoneq(data, &tokens[i], "message_type") == 0) {
-            printf("Message Type: %.*s\n", tokens[i + 1].end - tokens[i + 1].start, data + tokens[i + 1].start);
-            i++;
-        }
-    }
-}
-
-// Funktion zum Hex-Dump
-void print_hex(const uint8_t *data, uint16_t len) {
-    for (uint16_t i = 0; i < len; i++) {
-        printf("%02X ", data[i]);
-    }
-    printf("\n");
-}
 
 
 /* USER CODE END 4 */
@@ -613,25 +597,7 @@ void print_hex(const uint8_t *data, uint16_t len) {
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartAliveTask */
-void StartAliveTask(void *argument)
-{
-  /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-	    printf("ToggleLED\r\n");
-		//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-	      HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
 
-		//osDelay(999); // Warte 1 Sekunde
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
-  /* USER CODE END 5 */
-}
 
 /* USER CODE BEGIN Header_StartNetworkTask */
 /**
@@ -640,175 +606,25 @@ void StartAliveTask(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartNetworkTask */
-void StartNetworkTask(void *argument)
-{
-  /* USER CODE BEGIN StartwebSocketTask */
-	printf("StartwebSocketTask\r\n");
-	// otherwise the task freeze
-    uint8_t *buf = (uint8_t *)malloc(DATA_BUF_SIZE);
-    if (buf == NULL) {
-        printf("Failed to allocate memory for buffer\n");
-        return;
-    }
-
-  uint8_t destip[4] = {192, 168, 178, 25}; // Beispiel-IP-Adresse
-  uint16_t destport = 8085; // port
-
-  //uint32_t last_ping_time = 0;
-  static uint16_t any_port = 50000;
-  uint8_t currentSocketStatus = 0;
-
-  int websocket_upgraded = 0;
 
 
-  /* Infinite loop */
-  for(;;)
-  {
-
-      currentSocketStatus = getSn_SR(SOCK_DHCP);
-	  //printf("Status of Socket %d is: %d\r\n", SOCK_DHCP, currentSocketStatus);
-
-	  switch (currentSocketStatus) {
-	      case SOCK_CLOSED:
-	         printf("%d:Socket closed, reopening...\r\n", SOCK_DHCP);
-
-	         if((socket(SOCK_DHCP, Sn_MR_TCP, any_port++, 0x00)) != SOCK_DHCP)
-	         {
-	            if(any_port == 0xffff) any_port = 50000;
-	         }
-	         printf("%d:Socket opened\r\n", SOCK_DHCP);
-	         break;
-
-	      case SOCK_INIT:
-	          printf("Socket is initialized.\r\n");
-
-	          printf("%d:Try to connect to the %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
-
-	          if(connect(SOCK_DHCP, destip, destport) != SOCK_OK){
-	        	  printf("PROBLEM\r\n");
-	          }
-
-	          break;
-	      case SOCK_LISTEN:
-	          printf("Socket is in listen state.\n");
-	          break;
+/* USER CODE BEGIN Header_startWaterControllerTask */
+/**
+* @brief Function implementing the WaterController thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_startWaterControllerTask */
 
 
+/* USER CODE BEGIN Header_StartWatcherTask */
+/**
+* @brief Function implementing the WatcherTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartWatcherTask */
 
-
-
-
-
-
-	      case SOCK_ESTABLISHED:
-	          printf("Socket is established.\r\n");
-
-
-
-	          if (getSn_IR(SOCK_DHCP) & Sn_IR_CON) {
-	              printf("%d: Connected to - %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
-	              setSn_IR(SOCK_DHCP, Sn_IR_CON);
-//	              // Upgrade auf WebSocket
-//	              //upgrade_to_websocket(SOCK_DHCP);
-	          }
-
-
-
-              if (!websocket_upgraded) {
-                  if (upgrade_to_websocket(SOCK_DHCP) == 0) {
-                      printf("WebSocket upgrade successful.\n");
-                      websocket_upgraded = 1; // Upgrade als durchgeführt markieren
-                  } else {
-                      printf("WebSocket upgrade failed.\n");
-                      close(SOCK_DHCP);
-                  }
-              }
-
-
-
-
-//              // Sende Ping-Nachricht
-//              uint32_t current_time = osKernelSysTick();
-//              if (current_time - last_ping_time >= PING_INTERVAL) {
-//                  send_websocket_message(SOCK_DHCP, "123");
-//                  last_ping_time = current_time;
-//                  printf("PingTime: %lu\r\n", last_ping_time);
-//              }
-
-
-              // Empfang von WebSocket-Daten
-              int32_t ret;
-              uint16_t size = 0;
-
-              if ((size = getSn_RX_RSR(SOCK_DHCP)) > 0) {
-                  if (size > DATA_BUF_SIZE - 1) size = DATA_BUF_SIZE - 1; // Reserve 1 byte for null termination
-
-                  // Clear the buffer before receiving data
-                  memset(buf, 0, DATA_BUF_SIZE);
-
-                  ret = recv(SOCK_DHCP, buf, size);
-                  if (ret <= 0) {
-                      printf("Error receiving data. Socket closed.\n");
-                      close(SOCK_DHCP);
-                  } else {
-                      buf[ret] = '\0'; // Null termination
-                      printf("Empfangene Nachricht: %s\r\n", buf);
-
-                      // Print hex dump of the received data
-                      printf("Hex-Dump der empfangenen Daten: ");
-                      print_hex(buf, ret);
-
-                      // Skip the first two bytes which might be WebSocket protocol headers
-                      char *payload = (char *)(buf + 2);
-                      printf("Bereinigte Nachricht: %s\r\n", payload);
-
-                      process_received_data(payload);
-
-                  }
-              }
-              free(buf);
-
-
-
-	          break;
-	      case SOCK_CLOSE_WAIT:
-	          printf("Socket is closing.\n");
-	          break;
-	      case SOCK_UDP:
-	          printf("Socket is in UDP mode.\n");
-	          break;
-	      case SOCK_IPRAW:
-	          printf("Socket is in IP RAW mode.\n");
-	          break;
-	      case SOCK_MACRAW:
-	          printf("Socket is in MAC RAW mode.\n");
-	          break;
-	      default:
-	          printf("Unknown socket status: %d\n", currentSocketStatus);
-	          break;
-	  }
-
-
-
-
-	  vTaskDelay(1000 / portTICK_PERIOD_MS); // Vermeide eine enge Schleife
-
-  }
-
-
-//    int32_t result = loopback_tcpc(SOCK_DHCP, buf, destip, destport);
-//
-//    // Bearbeite das Ergebnis
-//    if (result < 0) {
-//        printf("Loopback-TCP-Client-Operation fehlgeschlagen mit Fehlercode: %ld\r\n", (long)result);
-//        // Delay to avoid tight loop
-//        osDelay(1000); // Warte 1 Sekunde vor dem erneuten Versuch
-//    }
-
-//    osDelay(100); // Vermeide eine enge Schleife
-
-  /* USER CODE END StartNetworkTask */
-}
 
 /**
   * @brief  Period elapsed callback in non blocking mode

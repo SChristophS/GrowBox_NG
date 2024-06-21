@@ -9,14 +9,11 @@
 #include <stdio.h>
 
 void WIZCHIPInitialize(){
-	printf("WIZCHIPInitialize\r\n");
+	printf("wizchip_init.c:	WIZCHIPInitialize\r\n");
 
 	csDisable();
-	printf("WIZCHIPInitialize1\r\n");
 	reg_wizchip_spi_cbfunc(spiReadByte, spiWriteByte);
-	printf("WIZCHIPInitialize2\r\n");
 	reg_wizchip_cs_cbfunc(csEnable, csDisable);
-	printf("WIZCHIPInitialize3\r\n");
 
 	uint8_t tmp;
 	//w5500, w5200
@@ -25,18 +22,18 @@ void WIZCHIPInitialize(){
 #else
 	uint8_t memsize[2][4] = { {2,2,2,2},{2,2,2,2}};
 #endif
-	printf("WIZCHIPInitialize4\r\n");
+	printf("wizchip_init.c:	WIZCHIPInitialize4\r\n");
 	if(ctlwizchip(CW_INIT_WIZCHIP,(void*)memsize) == -1)
 	{
 		//myprintf("WIZCHIP Initialized fail.\r\n");
-		printf("WIZCHIP Initialized fail.\r\n");
+		printf("wizchip_init.c:	WIZCHIP Initialized fail.\r\n");
 	  return;
 	}
 	/* PHY link status check */
 	do {
 		if(ctlwizchip(CW_GET_PHYLINK, (void*)&tmp) == -1)
 		{
-			printf("Unknown PHY Link status.\r\n");
+			printf("wizchip_init.c:	Unknown PHY Link status.\r\n");
 		  return;
 		}
 	} while (tmp == PHY_LINK_OFF);

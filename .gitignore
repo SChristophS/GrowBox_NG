@@ -5,3 +5,4 @@ growbox-controller/STM32f4_GCU/.settings/
 # Ignore Debug directories in STM32F1_GCU and STM32f4_GCU
 growbox-controller/STM32F1_GCU/Debug/
 growbox-controller/STM32f4_GCU/Debug/
+/growbox-controller/STM32f4_GCU/Debug/
