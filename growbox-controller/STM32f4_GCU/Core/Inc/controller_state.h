@@ -17,6 +17,7 @@ typedef struct {
     bool pumpeAblauf; // true = an, false = aus
     bool sensorVoll; // true = aktiviert, false = deaktiviert
     bool sensorLeer; // true = aktiviert, false = deaktiviert
+    int lightIntensity;
 } ControllerState;
 
 // Globale Variablen als extern deklarieren
@@ -24,6 +25,7 @@ extern ControllerState gControllerState;
 extern osMutexId_t gControllerStateMutex;
 extern osEventFlagsId_t gControllerEventGroup;
 extern osMessageQueueId_t xWaterControllerQueueHandle;
+extern osMessageQueueId_t xLightControllerQueueHandle;
 
 
 // Event-Bits für Benachrichtigung
@@ -32,6 +34,7 @@ extern osMessageQueueId_t xWaterControllerQueueHandle;
 #define PUMP_ABLAUF_STATE_CHANGED_BIT (1 << 2)
 #define SENSOR_VOLL_STATE_CHANGED_BIT (1 << 3)
 #define SENSOR_LEER_STATE_CHANGED_BIT (1 << 4)
+#define LIGHT_INTESITY_CHANGED_BIT (1 << 5)
 
 
 #endif /* INC_CONTROLLER_STATE_H_ */
