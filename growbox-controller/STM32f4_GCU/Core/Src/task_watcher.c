@@ -8,11 +8,14 @@ void StartWatcherTask(void *argument) {
     /* Infinite loop */
     for (;;) {
     	while (1) {
+
+
     	        // Warte auf ein Event
     	        uint32_t eventFlags = osEventFlagsWait(gControllerEventGroup,
     	            WATER_STATE_CHANGED_BIT | PUMP_ZULAUF_STATE_CHANGED_BIT |
     	            PUMP_ABLAUF_STATE_CHANGED_BIT | SENSOR_VOLL_STATE_CHANGED_BIT |
-    	            SENSOR_LEER_STATE_CHANGED_BIT, osFlagsWaitAny, osWaitForever);
+    	            SENSOR_LEER_STATE_CHANGED_BIT | LIGHT_INTESITY_CHANGED_BIT, osFlagsWaitAny, osWaitForever);
+
 
 
     	        if (eventFlags & WATER_STATE_CHANGED_BIT) {
@@ -20,17 +23,37 @@ void StartWatcherTask(void *argument) {
     	            printf("task_watcher.c:	Wasserzustand hat sich geaendert\r\n");
 
     	            // Nachricht in die entsprechende Queue stellen
-    	            osMutexAcquire(gControllerStateMutex, osWaitForever);
+        	        osMutexAcquire(gControllerStateMutex, osWaitForever);
     	            bool wasserbeckenZustand = gControllerState.wasserbeckenZustand;
     	            osMutexRelease(gControllerStateMutex);
 
-    	            if (osMessageQueuePut(xWaterControllerQueueHandle, &wasserbeckenZustand, 0, 0) != osOK) {
-    	                printf("task_watcher.c:	Failed to send message to WaterControllerQueue.\r\n");
-    	            } else {
-    	            	printf("task_watcher.c:	Queue hat neuen Zustand erhalten => WaterControllerQueue.\r\n");
-    	            }
+					if (osMessageQueuePut(xWaterControllerQueueHandle, &wasserbeckenZustand, 0, 0) != osOK) {
+						printf("task_watcher.c:	Failed to send message to WaterControllerQueue.\r\n");
+					} else {
+						printf("task_watcher.c:	Queue hat neuen Zustand erhalten => WaterControllerQueue.\r\n");
+						}
 
-    	        }
+				}
+
+				if (eventFlags & LIGHT_INTESITY_CHANGED_BIT) {
+					// Zustand von Sensor Leer hat sich geändert
+					printf("task_watcher.c:	Zustand lightIntensity hat sich geaendert\r\n");
+
+					// Nachricht in die entsprechende Queue stellen
+    	            osMutexAcquire(gControllerStateMutex, osWaitForever);
+    	            int lightIntensity= gControllerState.lightIntensity;
+    	            osMutexRelease(gControllerStateMutex);
+
+    	            printf("task_watcher.c:	Neue lightIntensity = %d\r\n", lightIntensity);
+
+					if (osMessageQueuePut(xLightControllerQueueHandle, &lightIntensity, 0, 0) != osOK) {
+						printf("task_watcher.c:	Failed to send message to xLightControllerQueueHandle.\r\n");
+					} else {
+						printf("task_watcher.c:	Queue hat neuen Wert %d erhalten => xLightControllerQueueHandle.\r\n", lightIntensity);
+					}
+
+				}
+
     	        if (eventFlags & PUMP_ZULAUF_STATE_CHANGED_BIT) {
     	            // Zustand von Pumpe 1 hat sich geändert
     	            printf("task_watcher.c:	Zustand von Pumpe Zulauf hat sich geaendert\r\n");

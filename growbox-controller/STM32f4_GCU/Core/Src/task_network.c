@@ -231,6 +231,7 @@ void process_received_data(const char* data) {
     char target[30] = {0};
     char action[20] = {0};
     bool value = false;
+    int int_value = 0; // Neue Variable für Integer-Wert
 
     // Schleife über alle Tokens im JSON-Dokument
     for (int i = 1; i < token_count; i++) {
@@ -259,10 +260,14 @@ void process_received_data(const char* data) {
                 } else if (jsoneq(data, &tokens[j], "value") == 0) {
                     if (strncmp(data + tokens[j + 1].start, "true", 4) == 0) {
                         value = true;
-                    } else {
+                    } else if (strncmp(data + tokens[j + 1].start, "false", 5) == 0) {
                         value = false;
+                    } else {
+                        // Versuche, den Wert als Integer zu parsen
+                        int_value = atoi(data + tokens[j + 1].start);
                     }
-                    printf("task_network.c:	Parsed value: %s\r\n", value ? "true" : "false");
+                    //printf("task_network.c:	Parsed value: %s\r\n", value ? "true" : "false");
+                    printf("task_network.c:	Parsed int_value: %d\r\n", int_value);
                     j++;
                 }
             }
@@ -275,10 +280,13 @@ void process_received_data(const char* data) {
     if (strcmp(message_type, "control_command") == 0) {
         if (strcmp(action, "change") == 0) {
             printf("task_network.c:	Executing change command for target: %s\r\n", target);
+
+            osMutexAcquire(gControllerStateMutex, osWaitForever);
+
             if (strcmp(target, "wasserbeckenZustand") == 0) {
-                osMutexAcquire(gControllerStateMutex, osWaitForever);
                 bool current_value = gControllerState.wasserbeckenZustand;
                 printf("task_network.c:	Current wasserbeckenZustand: %s\r\n", current_value ? "true" : "false");
+
                 if (current_value != value) {
                     printf("task_network.c:	Changing wasserbeckenZustand from %s to %s\r\n", current_value ? "true" : "false", value ? "true" : "false");
                     gControllerState.wasserbeckenZustand = value;
@@ -287,12 +295,27 @@ void process_received_data(const char* data) {
                 } else {
                     printf("task_network.c:	No change needed for wasserbeckenZustand\r\n");
                 }
-                osMutexRelease(gControllerStateMutex);
             }
-            // Weitere Zustände können hier hinzugefügt werden
+
+            if (strcmp(target, "lightIntensity") == 0) {
+                int current_value = gControllerState.lightIntensity;
+                printf("task_network.c:	Current lightIntensity: %d\r\n", current_value);
+
+                if (current_value != int_value) {
+                    printf("task_network.c:	Changing lightIntensity from %d to %d\r\n", current_value, int_value);
+                    gControllerState.lightIntensity = int_value;
+                    printf("task_network.c:	Updated lightIntensity to %d\r\n", gControllerState.lightIntensity);
+                    osEventFlagsSet(gControllerEventGroup, LIGHT_INTESITY_CHANGED_BIT);
+                } else {
+                    printf("task_network.c:	No change needed for lightIntensity\r\n");
+                }
+            }
+
+            osMutexRelease(gControllerStateMutex);
         }
     }
 }
+
 
 
 
