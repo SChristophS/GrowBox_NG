@@ -31,8 +31,6 @@
 #include <stdbool.h>
 #include "socket.h"
 #include "stdlib.h"
-
-
 #include "controller_state.h"
 
 /* Tasks */
@@ -40,7 +38,7 @@
 #include "task_alive.h"
 #include "task_watcher.h"
 #include "task_water_controller.h"
-
+#include "task_light_controller.h"
 
 /* USER CODE END Includes */
 
@@ -130,7 +128,6 @@ const osEventFlagsAttr_t gControllerEventGroup_attributes = {
 /* USER CODE BEGIN PV */
 
 
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -196,18 +193,26 @@ int main(void)
   MX_TIM10_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("main.c:\t - W5x00 Project - \r\n");
+  printf("main.c:\t - NextGeneration Growbox Project - \r\n");
+
+  printf("main.c:\t - set Light OFF...");
+  __HAL_TIM_SET_COMPARE(&LED_DIM_TIM, LED_DIM_CHANNEL, 999);
+  printf("done\r\n");
+
   resetAssert();
   HAL_Delay(300);
   resetDeassert();
   HAL_Delay(300);
 
+  printf("main.c:\t - initialize network\r\n");
   // configure network
   initialize_network();
+  printf("main.c:\t - done\r\n");
 
-  // Initialisiere die Mutex und EventGroup
+  printf("main.c:\t - initialize Mutex and EventGroup\r\n");
   gControllerStateMutex = osMutexNew(NULL);
   gControllerEventGroup = osEventFlagsNew(NULL);
+  printf("main.c:\t - done\r\n");
 
   /* USER CODE END 2 */
 
@@ -264,11 +269,32 @@ int main(void)
   gControllerEventGroupHandle = osEventFlagsNew(&gControllerEventGroup_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
+
+  printf("main.c:\t - check if all Tasks are created correctly...");
+  // check if all Tasks are created correctly
+  if (AliveTaskHandle == NULL) {
+	printf("main.c:\t - Error: Failed to create AliveTask\r\n");
+    Error_Handler();
+  }
+   if (NetworkTaskHandle == NULL) {
+	printf("main.c:\t - Error: Failed to create NetworkTaskHandle\r\n");
+    Error_Handler();
+  }
+
+  if (WaterControllerHandle == NULL) {
+	printf("main.c:\t - Error: Failed to create WaterControllerHandle\r\n");
+    Error_Handler();
+  }
+
+  if (LightTaskHandle == NULL) {
+	printf("main.c:\t - Error: Failed to create LightTaskHandle\r\n");
+    Error_Handler();
+  }
+
+  printf("main.c:\t - done\r\n");
+
+
   /* add events, ... */
-
-  printf("Setze WERT PWM auf 500!");
-  __HAL_TIM_SET_COMPARE(&htim10, TIM_CHANNEL_1, 500);
-
 
   /* USER CODE END RTOS_EVENTS */
 

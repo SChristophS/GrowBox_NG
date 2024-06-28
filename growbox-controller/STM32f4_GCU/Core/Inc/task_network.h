@@ -12,10 +12,9 @@ extern osMessageQueueId_t xMessageQueueHandle;
 #define SOCK_DHCP 3
 
 
-int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport);
+//int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport);
 
-#define OFF 0
-#define ON 1
+
 
 //#define DATA_BUF_SIZE 2048
 

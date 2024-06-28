@@ -41,7 +41,8 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+#define LED_DIM_TIM htim10  //
+#define LED_DIM_CHANNEL TIM_CHANNEL_1
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/

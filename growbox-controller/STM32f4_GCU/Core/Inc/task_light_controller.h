@@ -10,8 +10,4 @@
 
 extern TIM_HandleTypeDef htim10;  // Deklaration von htim10
 
-#define LED_DIM_TIM htim10  //
-#define LED_DIM_CHANNEL TIM_CHANNEL_1
-
-
 #endif /* INC_TASK_LIGHT_CONTROLLER_H_ */

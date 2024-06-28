@@ -8,3 +8,13 @@
     "value": true
   }
 }
+
+
+{
+  "message_type": "control_command",
+  "payload": {
+    "target": "lightIntensity",
+    "action": "change",
+    "value": 70
+  }
+}
