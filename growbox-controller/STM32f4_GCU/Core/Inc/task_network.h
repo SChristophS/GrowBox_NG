@@ -4,6 +4,7 @@
 #include "wizchip_conf.h"
 #include "cmsis_os2.h"
 
+
 extern osMessageQueueId_t xMessageQueueHandle;
 
 
@@ -11,6 +12,8 @@ extern osMessageQueueId_t xMessageQueueHandle;
 #define DATA_BUF_SIZE 8096
 #define SOCK_DHCP 3
 
+#define OFF 0
+#define ON 1
 
 //int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport);
 

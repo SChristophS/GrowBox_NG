@@ -320,14 +320,12 @@ void process_received_data(const char* data) {
 
 
 
-
-
 void StartNetworkTask(void *argument) {
-	printf("task_network.c:\t StartwebSocketTask\r\n");
+    printf("task_network.c:\t StartwebSocketTask\r\n");
     uint8_t *buf = (uint8_t *)malloc(DATA_BUF_SIZE);
 
     if (buf == NULL) {
-    	printf("task_network.c:\t Failed to allocate memory for buffer\n");
+        printf("task_network.c:\t Failed to allocate memory for buffer\n");
         return;
     }
 
@@ -343,43 +341,44 @@ void StartNetworkTask(void *argument) {
     int total_message_length = 0;
     char *total_message = (char *)malloc(DATA_BUF_SIZE);
     if (total_message == NULL) {
-    	printf("task_network.c:\t Failed to allocate memory for total_message buffer\n");
+        printf("task_network.c:\t Failed to allocate memory for total_message buffer\n");
         free(buf);
         return;
     }
+    total_message[0] = '\0'; // Initialize total_message buffer
 
-    for(;;) {
+    for (;;) {
         currentSocketStatus = getSn_SR(SOCK_DHCP);
         switch (currentSocketStatus) {
             case SOCK_CLOSED:
-            	printf("task_network.c:\t %d: Socket closed, reopening...\r\n", SOCK_DHCP);
-                if((socket(SOCK_DHCP, Sn_MR_TCP, any_port++, 0x00)) != SOCK_DHCP) {
-                    if(any_port == 0xffff) any_port = 50000;
+                printf("task_network.c:\t %d: Socket closed, reopening...\r\n", SOCK_DHCP);
+                if ((socket(SOCK_DHCP, Sn_MR_TCP, any_port++, 0x00)) != SOCK_DHCP) {
+                    if (any_port == 0xffff) any_port = 50000;
                 }
                 printf("task_network.c:\t %d: Socket opened\r\n", SOCK_DHCP);
                 break;
 
             case SOCK_INIT:
-            	printf("task_network.c:\t Socket is initialized.\r\n");
-            	printf("task_network.c:\t %d: Try to connect to the %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
-                if(connect(SOCK_DHCP, destip, destport) != SOCK_OK){
-                	printf("task_network.c:\t PROBLEM\r\n");
+                printf("task_network.c:\t Socket is initialized.\r\n");
+                printf("task_network.c:\t %d: Try to connect to the %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
+                if (connect(SOCK_DHCP, destip, destport) != SOCK_OK) {
+                    printf("task_network.c:\t PROBLEM\r\n");
                 }
                 break;
 
             case SOCK_ESTABLISHED:
-            	printf("task_network.c:\t Socket is established.\r\n");
+                printf("task_network.c:\t Socket is established.\r\n");
                 if (getSn_IR(SOCK_DHCP) & Sn_IR_CON) {
-                	printf("task_network.c:\t %d: Connected to - %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
+                    printf("task_network.c:\t %d: Connected to - %d.%d.%d.%d : %d\r\n", SOCK_DHCP, destip[0], destip[1], destip[2], destip[3], destport);
                     setSn_IR(SOCK_DHCP, Sn_IR_CON);
                 }
 
                 if (!websocket_upgraded) {
                     if (upgrade_to_websocket(SOCK_DHCP) == 0) {
-                    	printf("task_network.c:\t WebSocket upgrade successful.\n");
+                        printf("task_network.c:\t WebSocket upgrade successful.\n");
                         websocket_upgraded = 1;
                     } else {
-                    	printf("task_network.c:\t WebSocket upgrade failed.\n");
+                        printf("task_network.c:\t WebSocket upgrade failed.\n");
                         close(SOCK_DHCP);
                     }
                 }
@@ -391,7 +390,7 @@ void StartNetworkTask(void *argument) {
                     memset(buf, 0, DATA_BUF_SIZE);
                     ret = recv(SOCK_DHCP, buf, size);
                     if (ret <= 0) {
-                    	printf("task_network.c:\t Error receiving data. Socket closed.\n");
+                        printf("task_network.c:\t Error receiving data. Socket closed.\n");
                         close(SOCK_DHCP);
                     } else {
                         buf[ret] = '\0';
@@ -409,36 +408,56 @@ void StartNetworkTask(void *argument) {
                         }
 
                         if (payload_length > DATA_BUF_SIZE - 1) {
-                        	printf("task_network.c:\t Received payload is too large\n");
+                            printf("task_network.c:\t Received payload is too large\n");
                             break;
                         }
 
                         // Payload extrahieren
                         char *payload = (char *)(buf + header_length);
+
+                        // Print the cleaned message: This line uses printf to output the cleaned message received from the WebSocket.
+                        // %.*s is a format specifier in printf that allows us to print a string with a specified length.
+                        // (int)payload_length is the length of the string to be printed.
+                        // payload is the pointer to the string that will be printed.
+                        // This way, we can print a substring of 'payload' with a length of 'payload_length'.
+                        // It ensures that only the relevant part of the payload is printed, even if it is not null-terminated.
                         printf("task_network.c:\t Bereinigte Nachricht: %.*s\r\n", (int)payload_length, payload);
 
-                        // Anhängen des Payloads an den total_message-Puffer
+                        // Append the payload to the total_message buffer
+                        // This part is necessary to handle cases where WebSocket messages are fragmented
+                        // WebSocket messages can be split into multiple frames, especially if they are large
+                        // The total_message buffer is used to reconstruct the complete message from these fragments
+                        // memcpy copies the current payload to the total_message buffer at the correct position
+                        // total_message_length is updated accordingly
+                        // This ensures that we only process complete messages
+                        // It also checks if the total_message buffer has enough space to hold the new payload
+                        // If not, it reports a buffer overflow error and resets the buffer
                         if (total_message_length + payload_length < DATA_BUF_SIZE) {
+                            printf("task_network.c:\t Adding payload to total_message buffer. Current total_message_length: %d, payload_length: %d\n", total_message_length, (int)payload_length);
                             memcpy(total_message + total_message_length, payload, payload_length);
                             total_message_length += payload_length;
                             total_message[total_message_length] = '\0';
+                            printf("task_network.c:\t Updated total_message: %s\n", total_message);
                         } else {
-                        	printf("task_network.c:\t Buffer overflow, message too long.\n");
+                            printf("task_network.c:\t Buffer overflow, message too long.\n");
                             total_message_length = 0;
+                            total_message[0] = '\0'; // Reset the buffer
                         }
+
 
                         // Überprüfen auf das Ende der Nachricht
                         if (strchr(payload, '\n')) {
-                        	printf("task_network.c:\t Processing complete message: %s\n", total_message);
+                            printf("task_network.c:\t Processing complete message: %s\n", total_message);
                             process_received_data(total_message);
                             total_message_length = 0;
+                            total_message[0] = '\0'; // Reset the buffer
                         }
                     }
                 }
                 break;
 
             default:
-            	printf("task_network.c:\t Unknown socket status: %d\n", currentSocketStatus);
+                printf("task_network.c:\t Unknown socket status: %d\n", currentSocketStatus);
                 break;
         }
 
@@ -448,4 +467,3 @@ void StartNetworkTask(void *argument) {
     free(buf);
     free(total_message);
 }
-
