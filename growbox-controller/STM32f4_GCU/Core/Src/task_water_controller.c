@@ -16,12 +16,14 @@ void InitControllerState() {
     gControllerStateMutex = osMutexNew(NULL);
     if (gControllerStateMutex == NULL) {
         // Fehlerbehandlung
+    	printf("task_water_controller.c:\t Fehler beim erstellens des gControllerStateMutex");
     }
 
     // Erstellen Sie die Event-Gruppe
     gControllerEventGroup = osEventFlagsNew(NULL);
     if (gControllerEventGroup == NULL) {
         // Fehlerbehandlung
+    	printf("task_water_controller.c:\t Fehler beim erstellen der gControllerEventGroup");
     }
 }
 
@@ -68,14 +70,14 @@ void StartWaterControllerTask(void *argument)
     bool wasserbeckenZustand;
     GPIO_PinState stateSensorOben, stateSensorUnten;
 
+    InitControllerState();
+
     /* Infinite loop */
     for(;;)
     {
         stateSensorOben = HAL_GPIO_ReadPin(WATER_OBEN_GPIO_Port, WATER_OBEN_Pin);
         stateSensorUnten = HAL_GPIO_ReadPin(WATER_UNTEN_GPIO_Port, WATER_UNTEN_Pin);
-
         //printf("task_water_controller.c: Sensor Oben = %s, Unten = %s\r\n", stateSensorOben == GPIO_PIN_SET ? "HIGH" : "LOW", stateSensorUnten == GPIO_PIN_SET ? "HIGH" : "LOW");
-
 
         // Warte auf Nachrichten in der WaterController-Queue, mit Timeout
         if (osMessageQueueGet(xWaterControllerQueueHandle, &wasserbeckenZustand, NULL, 100) == osOK) {
@@ -92,33 +94,37 @@ void StartWaterControllerTask(void *argument)
             // Soll-Zustand: Wassertank voll
         	//printf("Soll-Zustand: Wassertank voll\r\n");
 
-
             if (stateSensorOben) {
             	//printf("Sensor oben meldet WASSER ERKANNT\r\n");
-            	// Stop Pumping zulauf
+
+            	// Stop pump zulauf
             	ControlPump(false, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
+            	// stop pump ablauf
+            	ControlPump(false, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
 
             } else {
             	//printf("Sensor oben meldet KEIN WASSER ERKANNT\r\n");
-
                 // Start Pumping zulauf
             	ControlPump(true, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
+            	// stop pumpe ablauf
+            	ControlPump(false, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
             }
         } else {
         	//printf("Soll-Zustand: Wassertank leer\r\n");
 
             // Soll-Zustand: Wassertank leer
-
             if (stateSensorUnten) {
             	//printf("Sensor UNTEN meldet WASSER ERKANNT\r\n");
                 // Start Pumping Ablauf
-            	//printf("Run PUMPE ABLAUF\r\n");
                 ControlPump(true, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
+                // Stop pump zulauf
+				ControlPump(false, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
             } else {
             	//printf("Sensor UNTEN meldet kein WASSER ERKANNT\r\n");
                 // Stop Pumping Zulauf
-
             	ControlPump(false, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
+            	// Stop pump zulauf
+				ControlPump(false, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
             }
         }
 

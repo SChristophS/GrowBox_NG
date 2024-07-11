@@ -8,24 +8,12 @@
 extern osMessageQueueId_t xMessageQueueHandle;
 
 
-//#define DATA_BUF_SIZE 2048
-#define DATA_BUF_SIZE 8096
+#define DATA_BUF_SIZE 3500
 #define SOCK_DHCP 3
-
+#define JSON_TOKENS 128
 #define OFF 0
 #define ON 1
-
-//int32_t loopback_tcpc(uint8_t sn, uint8_t* buf, uint8_t* destip, uint16_t destport);
-
-
-
-//#define DATA_BUF_SIZE 2048
-
-#define JSON_TOKENS 128
-
-//#define SOCK_DHCP 3
 #define SOCK_DNS 4
-
 #define PING_INTERVAL 2000 // Interval in milliseconds to send ping
 #define WEBSOCKET_PING_OPCODE 0x9 // WebSocket Ping Opcode
 #define WEBSOCKET_MASK_KEY_SIZE 4

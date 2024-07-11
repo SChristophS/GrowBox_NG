@@ -152,6 +152,19 @@ void InitControllerState(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// UID auslesen und anzeigen
+void GetSTM32UID(char *uidStr) {
+    uint32_t uid[3];
+    uid[0] = *(uint32_t *)0x1FFF7A10;
+    uid[1] = *(uint32_t *)0x1FFF7A14;
+    uid[2] = *(uint32_t *)0x1FFF7A18;
+
+    if (sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]) < 0) {
+        printf("task_network.c:\t - Error formatting UID string\r\n");
+        return;
+    }
+}
+
 
 /* USER CODE END 0 */
 
@@ -179,7 +192,9 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  char uidStr[25];
+  GetSTM32UID(uidStr);
+  printf("main.c:\t STM32 UID: %s\r\n", uidStr);
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */

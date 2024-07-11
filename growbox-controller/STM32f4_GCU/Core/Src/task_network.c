@@ -14,6 +14,7 @@
 #include "dns/dns.h"
 #include "controller_state.h"
 
+
 // Network configuration - without DHCP
 wiz_NetInfo defaultNetInfo = {
     .mac = {0x00,0x08,0xdc,0xff,0xee,0xdd},
@@ -24,28 +25,16 @@ wiz_NetInfo defaultNetInfo = {
     .dhcp = NETINFO_STATIC
 };
 
-uint8_t g_send_buf[DATA_BUF_SIZE];
-uint8_t g_recv_buf[DATA_BUF_SIZE];
-uint8_t data_buf[DATA_BUF_SIZE];
 
+// variables
+uint8_t data_buf[DATA_BUF_SIZE];
 uint8_t dns_server[4] = {168, 126, 63, 1}; // Secondary DNS server IP
 uint8_t Domain_IP[4] = {0}; // Translated IP address by DNS Server
 uint8_t Domain_name[] = "www.google.com";
-
 uint8_t flag_process_dhcp_success = OFF;
 uint8_t flag_process_dns_success = OFF;
 
-void GetSTM32UID(char *uidStr) {
-    uint32_t uid[3];
-    uid[0] = *(uint32_t *)0x1FFF7A10;
-    uid[1] = *(uint32_t *)0x1FFF7A14;
-    uid[2] = *(uint32_t *)0x1FFF7A18;
 
-    if (sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]) < 0) {
-        printf("task_network.c:\t - Error formatting UID string\r\n");
-        return;
-    }
-}
 
 void print_network_information(void) {
     wizchip_getnetinfo(&defaultNetInfo);
@@ -141,10 +130,7 @@ void initialize_network(void) {
     	printf("task_network.c:\t DNS Failed\r\n");
     }
 
-    // UID auslesen und anzeigen
-    char uidStr[25];
-    GetSTM32UID(uidStr);
-    printf("task_network.c:\t STM32 UID: %s\r\n", uidStr);
+
 }
 
 int upgrade_to_websocket(uint8_t sn) {
@@ -212,9 +198,17 @@ void process_received_data(const char* data) {
 
     // Überprüfe das Ergebnis des Parsens
     if (token_count < 0) {
-    	printf("task_network.c:\t Failed to parse JSON: %d\r\n", token_count);
+        printf("task_network.c:\t Failed to parse JSON: %d\r\n", token_count);
+        if (token_count == JSMN_ERROR_NOMEM) {
+            printf("task_network.c:\t Not enough tokens were provided.\r\n");
+        } else if (token_count == JSMN_ERROR_INVAL) {
+            printf("task_network.c:\t Invalid character inside JSON string.\r\n");
+        } else if (token_count == JSMN_ERROR_PART) {
+            printf("task_network.c:\t The string is not a full JSON packet, more bytes expected.\r\n");
+        }
         return;
     }
+
 
     // Stelle sicher, dass das erste Token ein Objekt ist
     if (token_count < 1 || tokens[0].type != JSMN_OBJECT) {
@@ -393,7 +387,7 @@ void StartNetworkTask(void *argument) {
                         close(SOCK_DHCP);
                     } else {
                         buf[ret] = '\0';
-                        printf("task_network.c:\t Empfangene Nachricht: %s\r\n", buf);
+                        //printf("task_network.c:\t Empfangene Nachricht: %s\r\n", buf);
 
                         // WebSocket-Frame analysieren
                         int header_length = 2;
@@ -407,22 +401,22 @@ void StartNetworkTask(void *argument) {
                         }
 
                         if (payload_length > DATA_BUF_SIZE - 1) {
-                            printf("task_network.c:\t Received payload is too large\n");
+                            printf("task_network.c:\t Received payload is too large\r\n");
                             break;
                         }
 
                         // Payload extrahieren
                         char *payload = (char *)(buf + header_length);
 
-                        printf("task_network.c:\t Bereinigte Nachricht: %.*s\r\n", (int)payload_length, payload);
+                        //printf("task_network.c:\t Bereinigte Nachricht: %.*s\r\n", (int)payload_length, payload);
 
                         // Payload zum total_message-Puffer hinzufügen
                         if (total_message_length + payload_length < DATA_BUF_SIZE) {
-                            printf("task_network.c:\t Adding payload to total_message buffer. Current total_message_length: %d, payload_length: %d\n", total_message_length, (int)payload_length);
+                            printf("task_network.c:\t Adding payload to total_message buffer. Current total_message_length: %d, payload_length: %d\r\n", total_message_length, (int)payload_length);
                             memcpy(total_message + total_message_length, payload, payload_length);
                             total_message_length += payload_length;
                             total_message[total_message_length] = '\0';
-                            printf("task_network.c:\t Updated total_message: %s\n", total_message);
+                            //printf("task_network.c:\t Updated total_message: %s\n", total_message);
                         } else {
                             printf("task_network.c:\t Buffer overflow, message too long.\n");
                             total_message_length = 0;
@@ -431,7 +425,7 @@ void StartNetworkTask(void *argument) {
 
                         // Überprüfen auf das Ende des Frames anhand des FIN-Bits
                         if ((buf[0] & 0x80) != 0) {  // FIN-Bit überprüfen
-                            printf("task_network.c:\t Processing complete message: %s\n", total_message);
+                            printf("task_network.c:\t Processing complete message\r\n");
                             process_received_data(total_message);
                             total_message_length = 0;
                             total_message[0] = '\0'; // Puffer zurücksetzen
