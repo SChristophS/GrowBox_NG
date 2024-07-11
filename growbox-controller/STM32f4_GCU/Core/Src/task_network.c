@@ -319,7 +319,6 @@ void process_received_data(const char* data) {
 }
 
 
-
 void StartNetworkTask(void *argument) {
     printf("task_network.c:\t StartwebSocketTask\r\n");
     uint8_t *buf = (uint8_t *)malloc(DATA_BUF_SIZE);
@@ -345,7 +344,7 @@ void StartNetworkTask(void *argument) {
         free(buf);
         return;
     }
-    total_message[0] = '\0'; // Initialize total_message buffer
+    total_message[0] = '\0'; // Initialisieren des total_message-Puffers
 
     for (;;) {
         currentSocketStatus = getSn_SR(SOCK_DHCP);
@@ -415,23 +414,9 @@ void StartNetworkTask(void *argument) {
                         // Payload extrahieren
                         char *payload = (char *)(buf + header_length);
 
-                        // Print the cleaned message: This line uses printf to output the cleaned message received from the WebSocket.
-                        // %.*s is a format specifier in printf that allows us to print a string with a specified length.
-                        // (int)payload_length is the length of the string to be printed.
-                        // payload is the pointer to the string that will be printed.
-                        // This way, we can print a substring of 'payload' with a length of 'payload_length'.
-                        // It ensures that only the relevant part of the payload is printed, even if it is not null-terminated.
                         printf("task_network.c:\t Bereinigte Nachricht: %.*s\r\n", (int)payload_length, payload);
 
-                        // Append the payload to the total_message buffer
-                        // This part is necessary to handle cases where WebSocket messages are fragmented
-                        // WebSocket messages can be split into multiple frames, especially if they are large
-                        // The total_message buffer is used to reconstruct the complete message from these fragments
-                        // memcpy copies the current payload to the total_message buffer at the correct position
-                        // total_message_length is updated accordingly
-                        // This ensures that we only process complete messages
-                        // It also checks if the total_message buffer has enough space to hold the new payload
-                        // If not, it reports a buffer overflow error and resets the buffer
+                        // Payload zum total_message-Puffer hinzufügen
                         if (total_message_length + payload_length < DATA_BUF_SIZE) {
                             printf("task_network.c:\t Adding payload to total_message buffer. Current total_message_length: %d, payload_length: %d\n", total_message_length, (int)payload_length);
                             memcpy(total_message + total_message_length, payload, payload_length);
@@ -441,17 +426,17 @@ void StartNetworkTask(void *argument) {
                         } else {
                             printf("task_network.c:\t Buffer overflow, message too long.\n");
                             total_message_length = 0;
-                            total_message[0] = '\0'; // Reset the buffer
+                            total_message[0] = '\0'; // Puffer zurücksetzen
                         }
 
-
-                        // Überprüfen auf das Ende der Nachricht
-                        if (strchr(payload, '\n')) {
+                        // Überprüfen auf das Ende des Frames anhand des FIN-Bits
+                        if ((buf[0] & 0x80) != 0) {  // FIN-Bit überprüfen
                             printf("task_network.c:\t Processing complete message: %s\n", total_message);
                             process_received_data(total_message);
                             total_message_length = 0;
-                            total_message[0] = '\0'; // Reset the buffer
+                            total_message[0] = '\0'; // Puffer zurücksetzen
                         }
+
                     }
                 }
                 break;
@@ -464,6 +449,8 @@ void StartNetworkTask(void *argument) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
+    // Puffer nach Beendigung der Schleife freigeben
     free(buf);
     free(total_message);
 }
+
