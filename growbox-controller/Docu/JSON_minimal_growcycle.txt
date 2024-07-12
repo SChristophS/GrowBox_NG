@@ -1,41 +1,40 @@
 {
-	"_id": {
-		"$oid": "64550e4e8408b864cd1df9a7"
-	},
-	"username": "christoph",
-	"growCycleName": "Zyklus_12h",
-	"description": "Testzyklus 12h",
-	"sharingStatus": "public",
-	"growData": {
-		"totalGrowTime": 720,
-		"startFromHere": 0,
-		"ledCycles": [
-			{
-				"durationOn": 30,
-				"durationOff": 30,
-				"ledRepetitions": 2
-			},
-			{
-				"durationOn": 60,
-				"durationOff": 60,
-				"ledRepetitions": 5
-			}
-		],
-		"wateringCycles": [
-			{
-				"status1": "full",
-				"duration1": 300,
-				"status2": "empty",
-				"duration2": 300,
-				"waterRepetitions": 1
-			},
-			{
-				"status1": "full",
-				"duration1": 60,
-				"status2": "empty",
-				"duration2": 60,
-				"waterRepetitions": 1
-			}
-		]
+	"target_UUID": "asd123asdasdasd",
+	"message_type": "newGrowCycle",
+	"payload": {
+		"target": "growCycle",
+		"action": "add_growCycle",
+		"value": {
+			"totalGrowTime": 720,
+			"startFromHere": 0,
+			"ledCycles": [
+				{
+					"durationOn": 30,
+					"durationOff": 30,
+					"ledRepetitions": 2
+				},
+				{
+					"durationOn": 60,
+					"durationOff": 60,
+					"ledRepetitions": 5
+				}
+			],
+			"wateringCycles": [
+				{
+					"status1": "full",
+					"duration1": 300,
+					"status2": "empty",
+					"duration2": 300,
+					"waterRepetitions": 1
+				},
+				{
+					"status1": "full",
+					"duration1": 60,
+					"status2": "empty",
+					"duration2": 60,
+					"waterRepetitions": 1
+				}
+			]
+		}
 	}
 }

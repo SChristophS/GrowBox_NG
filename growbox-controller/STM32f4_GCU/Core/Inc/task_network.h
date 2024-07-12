@@ -10,7 +10,7 @@ extern osMessageQueueId_t xMessageQueueHandle;
 
 #define DATA_BUF_SIZE 3500
 #define SOCK_DHCP 3
-#define JSON_TOKENS 128
+
 #define OFF 0
 #define ON 1
 #define SOCK_DNS 4
