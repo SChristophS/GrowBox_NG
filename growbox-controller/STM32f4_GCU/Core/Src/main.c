@@ -32,6 +32,8 @@
 #include "socket.h"
 #include "stdlib.h"
 #include "controller_state.h"
+#include "math.h"
+
 
 /* Tasks */
 #include "task_network.h"
@@ -44,6 +46,7 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
 
 
 /* USER CODE END PTD */
@@ -60,6 +63,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c2;
+
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 
@@ -68,13 +73,12 @@ TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim10;
 
 UART_HandleTypeDef huart2;
-UART_HandleTypeDef huart3;
 
 /* Definitions for AliveTask */
 osThreadId_t AliveTaskHandle;
 const osThreadAttr_t AliveTask_attributes = {
   .name = "AliveTask",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for NetworkTask */
@@ -135,11 +139,11 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_USART3_UART_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_TIM10_Init(void);
+static void MX_I2C2_Init(void);
 void StartAliveTask(void *argument);
 void StartNetworkTask(void *argument);
 void StartWaterControllerTask(void *argument);
@@ -152,18 +156,6 @@ void InitControllerState(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// UID auslesen und anzeigen
-void GetSTM32UID(char *uidStr) {
-    uint32_t uid[3];
-    uid[0] = *(uint32_t *)0x1FFF7A10;
-    uid[1] = *(uint32_t *)0x1FFF7A14;
-    uid[2] = *(uint32_t *)0x1FFF7A18;
-
-    if (sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]) < 0) {
-        printf("task_network.c:\t - Error formatting UID string\r\n");
-        return;
-    }
-}
 
 
 /* USER CODE END 0 */
@@ -192,20 +184,18 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  char uidStr[25];
-  GetSTM32UID(uidStr);
-  printf("main.c:\t STM32 UID: %s\r\n", uidStr);
+
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_USART2_UART_Init();
-  MX_USART3_UART_Init();
   MX_SPI2_Init();
   MX_TIM3_Init();
   MX_TIM6_Init();
   MX_TIM10_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
   printf("main.c:\t - NextGeneration Growbox Project - \r\n");
@@ -228,6 +218,9 @@ int main(void)
   gControllerStateMutex = osMutexNew(NULL);
   gControllerEventGroup = osEventFlagsNew(NULL);
   printf("main.c:\t - done\r\n");
+
+
+
 
   /* USER CODE END 2 */
 
@@ -254,7 +247,7 @@ int main(void)
   xWaterControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xWaterControllerQueue_attributes);
 
   /* creation of xLightControllerQueue */
-  xLightControllerQueueHandle = osMessageQueueNew (16, sizeof(int), &xLightControllerQueue_attributes);
+  xLightControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xLightControllerQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -372,6 +365,40 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.ClockSpeed = 400000;
+  hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
+
 }
 
 /**
@@ -613,39 +640,6 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART3_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART3_Init 0 */
-
-  /* USER CODE END USART3_Init 0 */
-
-  /* USER CODE BEGIN USART3_Init 1 */
-
-  /* USER CODE END USART3_Init 1 */
-  huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
-  huart3.Init.WordLength = UART_WORDLENGTH_8B;
-  huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
-  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART3_Init 2 */
-
-  /* USER CODE END USART3_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -749,17 +743,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-
-
 /* USER CODE END 4 */
-
-/* USER CODE BEGIN Header_StartLightTask */
-/**
-* @brief Function implementing the LightTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartLightTask */
 
 
 /**
