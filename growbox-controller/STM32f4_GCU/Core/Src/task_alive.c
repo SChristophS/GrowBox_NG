@@ -4,19 +4,11 @@
 #include "main.h"
 #include "uart_redirect.h"
 #include <stdlib.h>
-#include "at24cxx.h"
+
 
 //extern I2C_HandleTypeDef hi2c2;
 //#define EEPROM_I2C &hi2c2
 
-
-/* USER CODE BEGIN PV */
-bool writeStatus = false;
-bool readStatus = false;
-bool eraseStatus = false;
-uint8_t  wData[] = "Hello World 123";
-uint8_t  rData[25];
-#define MEM_ADDR    0x00u
 
 
 // UID auslesen und anzeigen
@@ -44,35 +36,6 @@ void StartAliveTask(void *argument)
 	GetSTM32UID(uidStr);
 	printf("task_alive.c:\t STM32 UID: %s\r\n", uidStr);
 
-	printf("task_alive.c:\t EEPROM test start\r\n");
-
-
-
-	if(at24_isConnected()){
-		// at24_eraseChip can take more than 30 Sec
-		eraseStatus = at24_eraseChip();
-		vTaskDelay(10 / portTICK_PERIOD_MS);
-		writeStatus = at24_write(MEM_ADDR,wData, 15, 100);
-		vTaskDelay(10 / portTICK_PERIOD_MS);
-		readStatus = at24_read(MEM_ADDR,rData, 15, 100);
-		vTaskDelay(10 / portTICK_PERIOD_MS);
-
-
-	}
-
-
-
-	// Gelesene Daten via UART im Dezimalformat ausgeben
-	printf("task_alive.c:\t Gelesen aus EEPROM DEZ:");
-	for (int i = 0; i < 3; i++) {
-	    printf(" %d", rData[i]);
-
-	}
-	printf("\r\n");
-
-	printf("task_alive.c:\t Gelesen aus EEPROM Text: %s\r\n", rData);
-
-	printf("task_alive.c:\t - EEPROM Test Ende\r\n");
 
   /* Infinite loop */
 

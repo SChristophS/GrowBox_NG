@@ -41,6 +41,7 @@
 #include "task_watcher.h"
 #include "task_water_controller.h"
 #include "task_light_controller.h"
+#include "task_grower.h"
 
 /* USER CODE END Includes */
 
@@ -109,6 +110,13 @@ const osThreadAttr_t LightTask_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal2,
 };
+/* Definitions for GrowerTask */
+osThreadId_t GrowerTaskHandle;
+const osThreadAttr_t GrowerTask_attributes = {
+  .name = "GrowerTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for xWaterControllerQueue */
 osMessageQueueId_t xWaterControllerQueueHandle;
 const osMessageQueueAttr_t xWaterControllerQueue_attributes = {
@@ -149,6 +157,7 @@ void StartNetworkTask(void *argument);
 void StartWaterControllerTask(void *argument);
 void StartWatcherTask(void *argument);
 void StartLightTask(void *argument);
+void StartGrowerTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 void InitControllerState(void);
@@ -200,19 +209,11 @@ int main(void)
 
   printf("main.c:\t - NextGeneration Growbox Project - \r\n");
 
-  printf("main.c:\t - set Light OFF...");
-  __HAL_TIM_SET_COMPARE(&LED_DIM_TIM, LED_DIM_CHANNEL, 999);
-  printf("done\r\n");
-
   resetAssert();
   HAL_Delay(300);
   resetDeassert();
   HAL_Delay(300);
 
-  printf("main.c:\t - initialize network\r\n");
-  // configure network
-  initialize_network();
-  printf("main.c:\t - done\r\n");
 
   printf("main.c:\t - initialize Mutex and EventGroup\r\n");
   gControllerStateMutex = osMutexNew(NULL);
@@ -269,6 +270,9 @@ int main(void)
   /* creation of LightTask */
   LightTaskHandle = osThreadNew(StartLightTask, NULL, &LightTask_attributes);
 
+  /* creation of GrowerTask */
+  GrowerTaskHandle = osThreadNew(StartGrowerTask, NULL, &GrowerTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -296,6 +300,11 @@ int main(void)
 
   if (LightTaskHandle == NULL) {
 	printf("main.c:\t - Error: Failed to create LightTaskHandle\r\n");
+    Error_Handler();
+  }
+
+  if (GrowerTaskHandle == NULL) {
+	printf("main.c:\t - Error: Failed to create GrowerTaskHandle\r\n");
     Error_Handler();
   }
 
@@ -744,7 +753,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
-
 
 /**
   * @brief  Period elapsed callback in non blocking mode

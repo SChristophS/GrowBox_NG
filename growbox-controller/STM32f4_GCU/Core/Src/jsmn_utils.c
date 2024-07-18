@@ -5,6 +5,105 @@
 #include "controller_state.h"
 #include <stdlib.h>
 #include "jsmn.h"
+#include "led_cycles.h"
+#include "at24cxx.h"
+
+bool writeStatus = false;
+bool readStatus = false;
+bool eraseStatus = false;
+uint8_t  wData[] = "PENIS World 123";
+uint8_t  rData[25];
+#define MEM_ADDR    0x00u
+
+
+
+
+void debugEEPROMData(const LEDCycleData* data) {
+    printf("Debugging EEPROM Data:\r\n");
+    printf("Number of Cycles: %u\r\n", (unsigned int)data->numCycles);
+    for (size_t i = 0; i < data->numCycles; i++) {
+        printf("Cycle %lu: durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
+               (unsigned long)i, data->cycles[i].durationOn, data->cycles[i].durationOff, data->cycles[i].ledRepetitions);
+    }
+}
+
+void printBytes(const uint8_t* data, size_t size) {
+    printf("Bytes: ");
+    for (size_t i = 0; i < size; i++) {
+        printf("%02X ", data[i]);
+    }
+    printf("\r\n");
+}
+
+void storeLEDCyclesInEEPROM(const LEDCycleData* ledData) {
+
+	printf("jsmn_utils.c:\tcheck if at24 i2c storage is connected...");
+
+	if(at24_isConnected()){
+		printf("connected\r\n");
+//
+//		// at24_eraseChip can take more than 30 Sec
+//		// eraseStatus = at24_eraseChip();
+//		// vTaskDelay(10 / portTICK_PERIOD_MS);
+//		writeStatus = at24_write(MEM_ADDR,wData, 15, 100);
+//		vTaskDelay(10 / portTICK_PERIOD_MS);
+//		printf("jsmn_utils.c:\t WriteStatus = %i\r\n", writeStatus);
+//
+//
+//		readStatus = at24_read(MEM_ADDR,rData, 15, 100);
+//		vTaskDelay(10 / portTICK_PERIOD_MS);
+//		printf("jsmn_utils.c:\t readStatus = %i\r\n", readStatus);
+//
+//		printf("jsmn_utils.c:\t Gelesen aus EEPROM Text: %s\r\n", rData);
+//		printf("jsmn_utils.c:\t - EEPROM Test Ende\r\n");
+	} else {
+		printf("FAILED\r\n");
+	}
+
+    size_t dataSize = sizeof(*ledData);
+    printf("storeLEDCyclesInEEPROM:\t Size of LEDCycleData: %lu bytes\r\n", (unsigned long)dataSize);
+
+    // Debug-Ausgabe der Daten, die gespeichert werden
+    printf("jsmn_utils.c:\t Saving LED Cycles to EEPROM\r\n");
+    printf("jsmn_utils.c:\t Number of Cycles: %u\r\n", (unsigned int)ledData->numCycles);
+
+    for (size_t i = 0; i < ledData->numCycles; i++) {
+        printf("jsmn_utils.c:\t Cycle %lu: durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
+               (unsigned long)i, ledData->cycles[i].durationOn, ledData->cycles[i].durationOff, ledData->cycles[i].ledRepetitions);
+    }
+
+    // Schreiben der Daten in das EEPROM
+    printf("jsmn_utils.c:\t Data size to write: %lu bytes\r\n", (unsigned long)dataSize);
+    printf("jsmn_utils.c:\t LEDCycleData address: %p\r\n", (void*)ledData);
+
+    int writeStatus = at24_write(MEM_ADDR, (uint8_t*)ledData, dataSize, 1000);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+
+    // Überprüfen, ob das Schreiben erfolgreich war
+    if (writeStatus == 1) {
+        printf("jsmn_utils.c:\t Successfully wrote %lu bytes to EEPROM\r\n", (unsigned long)dataSize);
+
+        // Lesen der Daten aus dem EEPROM zum Verifizieren
+        LEDCycleData readData = {0};
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+
+        int readStatus = at24_read(MEM_ADDR, (uint8_t*)&readData, dataSize, 1000);
+
+        if (readStatus == 1) {
+            printf("jsmn_utils.c:\t Successfully read %lu bytes from EEPROM\r\n", (unsigned long)dataSize);
+            printf("jsmn_utils.c:\t Number of Cycles (read back): %u\r\n", (unsigned int)readData.numCycles);
+
+            for (size_t i = 0; i < readData.numCycles; i++) {
+                printf("jsmn_utils.c:\t Cycle %lu (read back): durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
+                       (unsigned long)i, readData.cycles[i].durationOn, readData.cycles[i].durationOff, readData.cycles[i].ledRepetitions);
+            }
+        } else {
+            printf("jsmn_utils.c:\t Failed to read from EEPROM, error code: %d\r\n", readStatus);
+        }
+    } else {
+        printf("jsmn_utils.c:\t Failed to write to EEPROM, error code: %d\r\n", writeStatus);
+    }
+}
 
 // Hilfsfunktion zum Vergleichen von JSON-Schlüsseln
 int jsoneq(const char* json, jsmntok_t* tok, const char* s) {
@@ -25,14 +124,15 @@ int jsoneq(const char* json, jsmntok_t* tok, const char* s) {
     return -1; // Die Strings sind nicht gleich
 }
 
-
 void process_received_data(const char* data) {
+
+
     jsmn_parser parser;
     jsmntok_t tokens[JSON_TOKENS];
     int token_count;
 
     // Ausgabe der empfangenen Rohdaten
-    printf("task_network.c:\t Raw data: %s\r\n", data);
+    printf("jsmn_utils.c:\t Raw data: %s\r\n", data);
 
     // Initialisiere den JSON-Parser
     jsmn_init(&parser);
@@ -40,26 +140,27 @@ void process_received_data(const char* data) {
 
     // Überprüfe das Ergebnis des Parsens
     if (token_count < 0) {
-        printf("task_network.c:\t Failed to parse JSON: %d\r\n", token_count);
+        printf("jsmn_utils.c:\t Failed to parse JSON: %d\r\n", token_count);
         if (token_count == JSMN_ERROR_NOMEM) {
-            printf("task_network.c:\t Not enough tokens were provided.\r\n");
+            printf("jsmn_utils.c:\t Not enough tokens were provided.\r\n");
         } else if (token_count == JSMN_ERROR_INVAL) {
-            printf("task_network.c:\t Invalid character inside JSON string.\r\n");
+            printf("jsmn_utils.c:\t Invalid character inside JSON string.\r\n");
         } else if (token_count == JSMN_ERROR_PART) {
-            printf("task_network.c:\t The string is not a full JSON packet, more bytes expected.\r\n");
+            printf("jsmn_utils.c:\t The string is not a full JSON packet, more bytes expected.\r\n");
         }
         return;
     }
+    printf("jsmn_utils.c:\t Successfully parsed JSON: %d tokens\r\n", token_count);
 
     // Stelle sicher, dass das erste Token ein Objekt ist
     if (token_count < 1 || tokens[0].type != JSMN_OBJECT) {
-        printf("task_network.c:\t Object expected\r\n");
+        printf("jsmn_utils.c:\t Object expected\r\n");
         return;
     }
 
     // Debug: Ausgabe aller Token
     for (int i = 0; i < token_count; i++) {
-        printf("task_network.c:\t Token %d: Type: %d, Start: %d, End: %d, Size: %d\r\n",
+        printf("jsmn_utils.c:\t Token %d: Type: %d, Start: %d, End: %d, Size: %d\r\n",
                i, tokens[i].type, tokens[i].start, tokens[i].end, tokens[i].size);
     }
 
@@ -67,97 +168,98 @@ void process_received_data(const char* data) {
     char message_type[20] = {0};
     char target[30] = {0};
     char action[20] = {0};
-    bool value = false;
-    int int_value = 0; // Neue Variable für Integer-Wert
+    LEDCycleData ledData = {0}; // Variable für LED-Zyklen
 
     // Schleife über alle Tokens im JSON-Dokument
     for (int i = 1; i < token_count; i++) {
         if (jsoneq(data, &tokens[i], "message_type") == 0) {
             // Extrahiere message_type
             snprintf(message_type, sizeof(message_type), "%.*s", tokens[i + 1].end - tokens[i + 1].start, data + tokens[i + 1].start);
-            printf("task_network.c:\t Parsed message_type: %s\r\n", message_type);
+            printf("jsmn_utils.c:\t Parsed message_type: %s\r\n", message_type);
             i++;
         } else if (jsoneq(data, &tokens[i], "payload") == 0) {
             // Extrahiere die Payload
-            printf("task_network.c:\t Extracting payload...\r\n");
+            printf("jsmn_utils.c:\t Extracting payload...\r\n");
             for (int j = i + 1; j < token_count; j++) {
                 if (tokens[j].type == JSMN_OBJECT && tokens[j].size == 0) {
-                    printf("task_network.c:\t End of payload object\r\n");
+                    printf("jsmn_utils.c:\t End of payload object\r\n");
                     break; // End of payload object
                 }
 
                 if (jsoneq(data, &tokens[j], "target") == 0) {
                     snprintf(target, sizeof(target), "%.*s", tokens[j + 1].end - tokens[j + 1].start, data + tokens[j + 1].start);
-                    printf("task_network.c:\t Parsed target: %s\r\n", target);
+                    printf("jsmn_utils.c:\t Parsed target: %s\r\n", target);
                     j++;
                 } else if (jsoneq(data, &tokens[j], "action") == 0) {
                     snprintf(action, sizeof(action), "%.*s", tokens[j + 1].end - tokens[j + 1].start, data + tokens[j + 1].start);
-                    printf("task_network.c:\t Parsed action: %s\r\n", action);
+                    printf("jsmn_utils.c:\t Parsed action: %s\r\n", action);
                     j++;
                 } else if (jsoneq(data, &tokens[j], "value") == 0) {
-                    if (strncmp(data + tokens[j + 1].start, "true", 4) == 0) {
-                        value = true;
-                    } else if (strncmp(data + tokens[j + 1].start, "false", 5) == 0) {
-                        value = false;
-                    } else {
-                        // Versuche, den Wert als Integer zu parsen
-                        int_value = atoi(data + tokens[j + 1].start);
+                    printf("jsmn_utils.c:\t Extracting value...\r\n");
+                    for (int k = j + 1; k < token_count; k++) {
+                        if (tokens[k].type == JSMN_OBJECT && tokens[k].size == 0) {
+                            printf("jsmn_utils.c:\t End of value object\r\n");
+                            break; // End of value object
+                        }
+
+                        if (jsoneq(data, &tokens[k], "ledCycles") == 0) {
+                            printf("jsmn_utils.c:\t Extracting ledCycles...\r\n");
+                            if (tokens[k + 1].type == JSMN_ARRAY) {
+                                int array_size = tokens[k + 1].size;
+                                printf("jsmn_utils.c:\t Number of ledCycles: %d\r\n", array_size);
+                                int array_index = k + 2;  // Das erste Element des Arrays
+                                ledData.numCycles = array_size;
+
+                                for (int l = 0; l < array_size; l++) {
+                                    printf("jsmn_utils.c:\t Processing cycle %d\r\n", l);
+                                    if (tokens[array_index].type == JSMN_OBJECT) {
+                                        for (int m = 1; m < tokens[array_index].size * 2; m += 2) {
+                                            printf("jsmn_utils.c:\t  Key: %.*s\r\n", tokens[array_index + m].end - tokens[array_index + m].start, data + tokens[array_index + m].start);
+                                            printf("jsmn_utils.c:\t  Value: %.*s\r\n", tokens[array_index + m + 1].end - tokens[array_index + m + 1].start, data + tokens[array_index + m + 1].start);
+                                            if (jsoneq(data, &tokens[array_index + m], "durationOn") == 0) {
+                                                ledData.cycles[l].durationOn = atoi(data + tokens[array_index + m + 1].start);
+                                                printf("jsmn_utils.c:\t  Parsed durationOn: %d\r\n", ledData.cycles[l].durationOn);
+                                            } else if (jsoneq(data, &tokens[array_index + m], "durationOff") == 0) {
+                                                ledData.cycles[l].durationOff = atoi(data + tokens[array_index + m + 1].start);
+                                                printf("jsmn_utils.c:\t  Parsed durationOff: %d\r\n", ledData.cycles[l].durationOff);
+                                            } else if (jsoneq(data, &tokens[array_index + m], "ledRepetitions") == 0) {
+                                                ledData.cycles[l].ledRepetitions = atoi(data + tokens[array_index + m + 1].start);
+                                                printf("jsmn_utils.c:\t  Parsed ledRepetitions: %d\r\n", ledData.cycles[l].ledRepetitions);
+                                            }
+                                        }
+                                        array_index += tokens[array_index].size * 2 + 1;  // Gehe zum nächsten Objekt im Array
+                                    }
+                                }
+                            }
+                        }
                     }
-                    //printf("task_network.c:	Parsed value: %s\r\n", value ? "true" : "false");
-                    printf("task_network.c:\t Parsed int_value: %d\r\n", int_value);
-                    j++;
+                    printf("jsmn_utils.c:\t End of value object processing\r\n");
+
+                    // Zusätzliche Debug-Ausgabe der ledData-Inhalte
+                    printf("jsmn_utils.c:\t LED Cycles extracted from value object:\r\n");
+                    printf("jsmn_utils.c:\t Number of Cycles: %u\r\n", (unsigned int)ledData.numCycles);
+                    for (size_t i = 0; i < ledData.numCycles; i++) {
+                        printf("jsmn_utils.c:\t Cycle %lu: durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
+                               (unsigned long)i, ledData.cycles[i].durationOn, ledData.cycles[i].durationOff, ledData.cycles[i].ledRepetitions);
+                    }
+
+                    j = token_count; // Beende die Schleife nach dem Verarbeiten der value
                 }
             }
-            printf("task_network.c:\t End of payload object processing\r\n");
+            printf("jsmn_utils.c:\t End of payload object processing\r\n");
             i = token_count; // Beende die Schleife nach dem Verarbeiten der Payload
         }
     }
 
     // Verarbeite die extrahierten Daten basierend auf dem message_type und den anderen Feldern
     if (strcmp(message_type, "control_command") == 0) {
-        if (strcmp(action, "change") == 0) {
-            printf("task_network.c:\t Executing change command for target: %s\r\n", target);
-
-            osMutexAcquire(gControllerStateMutex, osWaitForever);
-
-            if (strcmp(target, "wasserbeckenZustand") == 0) {
-                bool current_value = gControllerState.wasserbeckenZustand;
-                printf("task_network.c:\t Current wasserbeckenZustand: %s\r\n", current_value ? "true" : "false");
-
-                if (current_value != value) {
-                    printf("task_network.c:\t Changing wasserbeckenZustand from %s to %s\r\n", current_value ? "true" : "false", value ? "true" : "false");
-                    gControllerState.wasserbeckenZustand = value;
-                    printf("task_network.c:\t Updated wasserbeckenZustand to %s\r\n", gControllerState.wasserbeckenZustand ? "true" : "false");
-                    osEventFlagsSet(gControllerEventGroup, WATER_STATE_CHANGED_BIT);
-                } else {
-                    printf("task_network.c:\t No change needed for wasserbeckenZustand\r\n");
-                }
-            }
-
-            if (strcmp(target, "lightIntensity") == 0) {
-                int current_value = gControllerState.lightIntensity;
-                printf("task_network.c:\t Current lightIntensity: %d\r\n", current_value);
-
-                if (current_value != int_value) {
-                    printf("task_network.c:\t Changing lightIntensity from %d to %d\r\n", current_value, int_value);
-                    gControllerState.lightIntensity = int_value;
-                    printf("task_network.c:\t Updated lightIntensity to %d\r\n", gControllerState.lightIntensity);
-                    osEventFlagsSet(gControllerEventGroup, LIGHT_INTESITY_CHANGED_BIT);
-                } else {
-                    printf("task_network.c:	No change needed for lightIntensity\r\n");
-                }
-            }
-
-            osMutexRelease(gControllerStateMutex);
-        }
+        // Vorheriger Code zum Verarbeiten von control_command
     } else if (strcmp(message_type, "newGrowCycle") == 0) {
-    	printf("task_network.c:	Received new GrowCycle\r\n");
+        printf("jsmn_utils.c:\tReceived new GrowCycle\r\n");
 
         if (strcmp(action, "add_growCycle") == 0) {
-
-            if (strcmp(target, "growCycle") == 0) {
-                printf("task_network.c:\t Target is %s", target);
-            }
+            printf("jsmn_utils.c:\t action is add_growcycle (check: action: %s)\r\n", action);
+            storeLEDCyclesInEEPROM(&ledData);
         }
     }
 }

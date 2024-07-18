@@ -173,6 +173,13 @@ int upgrade_to_websocket(uint8_t sn) {
 
 void StartNetworkTask(void *argument) {
     printf("task_network.c:\t StartwebSocketTask\r\n");
+
+    printf("task_network.c:\t - initialize network\r\n");
+    // configure network
+    initialize_network();
+    printf("task_network.c:\t - done\r\n");
+
+
     uint8_t *buf = (uint8_t *)malloc(DATA_BUF_SIZE);
 
     if (buf == NULL) {
