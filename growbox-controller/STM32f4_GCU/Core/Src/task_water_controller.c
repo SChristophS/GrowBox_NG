@@ -4,28 +4,7 @@
 #include <stdio.h>
 #include "main.h"
 
-void InitControllerState() {
-    // Initialisieren Sie den Zustand
-    gControllerState.wasserbeckenZustand = false;
-    gControllerState.pumpeZulauf = false;
-    gControllerState.pumpeAblauf = false;
-    gControllerState.sensorVoll = false;
-    gControllerState.sensorLeer = false;
 
-    // Erstellen Sie den Mutex
-    gControllerStateMutex = osMutexNew(NULL);
-    if (gControllerStateMutex == NULL) {
-        // Fehlerbehandlung
-    	printf("task_water_controller.c:\t Fehler beim erstellens des gControllerStateMutex");
-    }
-
-    // Erstellen Sie die Event-Gruppe
-    gControllerEventGroup = osEventFlagsNew(NULL);
-    if (gControllerEventGroup == NULL) {
-        // Fehlerbehandlung
-    	printf("task_water_controller.c:\t Fehler beim erstellen der gControllerEventGroup");
-    }
-}
 
 void UpdateWaterControllerState(bool wasserbeckenZustand, bool pumpeZulauf, bool pumpeAblauf, bool sensorVoll, bool sensorLeer) {
     osMutexAcquire(gControllerStateMutex, osWaitForever);
@@ -70,7 +49,7 @@ void StartWaterControllerTask(void *argument)
     bool wasserbeckenZustand;
     GPIO_PinState stateSensorOben, stateSensorUnten;
 
-    InitControllerState();
+
 
     /* Infinite loop */
     for(;;)

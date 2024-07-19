@@ -8,8 +8,10 @@
 #include "led_cycles.h"
 #include "at24cxx.h"
 
-bool writeStatus = false;
-bool readStatus = false;
+
+extern osMutexId_t gEEPROMMutexHandle;
+
+
 bool eraseStatus = false;
 uint8_t  wData[] = "PENIS World 123";
 uint8_t  rData[25];
@@ -36,74 +38,76 @@ void printBytes(const uint8_t* data, size_t size) {
 }
 
 void storeLEDCyclesInEEPROM(const LEDCycleData* ledData) {
+    printf("jsmn_utils.c:\tcheck if at24 i2c storage is connected...");
 
-	printf("jsmn_utils.c:\tcheck if at24 i2c storage is connected...");
+    // Versuchen, den Mutex zu erwerben und den Erfolg direkt überprüfen
+    if (osMutexAcquire(gEEPROMMutexHandle, osWaitForever) == osOK) {
+        if(at24_isConnected()) {
+            printf("connected\r\n");
 
-	if(at24_isConnected()){
-		printf("connected\r\n");
-//
-//		// at24_eraseChip can take more than 30 Sec
-//		// eraseStatus = at24_eraseChip();
-//		// vTaskDelay(10 / portTICK_PERIOD_MS);
-//		writeStatus = at24_write(MEM_ADDR,wData, 15, 100);
-//		vTaskDelay(10 / portTICK_PERIOD_MS);
-//		printf("jsmn_utils.c:\t WriteStatus = %i\r\n", writeStatus);
-//
-//
-//		readStatus = at24_read(MEM_ADDR,rData, 15, 100);
-//		vTaskDelay(10 / portTICK_PERIOD_MS);
-//		printf("jsmn_utils.c:\t readStatus = %i\r\n", readStatus);
-//
-//		printf("jsmn_utils.c:\t Gelesen aus EEPROM Text: %s\r\n", rData);
-//		printf("jsmn_utils.c:\t - EEPROM Test Ende\r\n");
-	} else {
-		printf("FAILED\r\n");
-	}
+            // Größe der zu schreibenden Daten berechnen
+            size_t dataSize = sizeof(*ledData);
+            printf("jsmn_utils-c:\t Size of LEDCycleData: %lu bytes\r\n", (unsigned long)dataSize);
 
-    size_t dataSize = sizeof(*ledData);
-    printf("storeLEDCyclesInEEPROM:\t Size of LEDCycleData: %lu bytes\r\n", (unsigned long)dataSize);
+            // Debug-Ausgabe der Daten, die gespeichert werden
+            printf("jsmn_utils.c:\t Saving LED Cycles to EEPROM\r\n");
+            printf("jsmn_utils.c:\t Number of Cycles: %u\r\n", (unsigned int)ledData->numCycles);
 
-    // Debug-Ausgabe der Daten, die gespeichert werden
-    printf("jsmn_utils.c:\t Saving LED Cycles to EEPROM\r\n");
-    printf("jsmn_utils.c:\t Number of Cycles: %u\r\n", (unsigned int)ledData->numCycles);
-
-    for (size_t i = 0; i < ledData->numCycles; i++) {
-        printf("jsmn_utils.c:\t Cycle %lu: durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
-               (unsigned long)i, ledData->cycles[i].durationOn, ledData->cycles[i].durationOff, ledData->cycles[i].ledRepetitions);
-    }
-
-    // Schreiben der Daten in das EEPROM
-    printf("jsmn_utils.c:\t Data size to write: %lu bytes\r\n", (unsigned long)dataSize);
-    printf("jsmn_utils.c:\t LEDCycleData address: %p\r\n", (void*)ledData);
-
-    int writeStatus = at24_write(MEM_ADDR, (uint8_t*)ledData, dataSize, 1000);
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-
-    // Überprüfen, ob das Schreiben erfolgreich war
-    if (writeStatus == 1) {
-        printf("jsmn_utils.c:\t Successfully wrote %lu bytes to EEPROM\r\n", (unsigned long)dataSize);
-
-        // Lesen der Daten aus dem EEPROM zum Verifizieren
-        LEDCycleData readData = {0};
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        int readStatus = at24_read(MEM_ADDR, (uint8_t*)&readData, dataSize, 1000);
-
-        if (readStatus == 1) {
-            printf("jsmn_utils.c:\t Successfully read %lu bytes from EEPROM\r\n", (unsigned long)dataSize);
-            printf("jsmn_utils.c:\t Number of Cycles (read back): %u\r\n", (unsigned int)readData.numCycles);
-
-            for (size_t i = 0; i < readData.numCycles; i++) {
-                printf("jsmn_utils.c:\t Cycle %lu (read back): durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
-                       (unsigned long)i, readData.cycles[i].durationOn, readData.cycles[i].durationOff, readData.cycles[i].ledRepetitions);
+            for (size_t i = 0; i < ledData->numCycles; i++) {
+                printf("jsmn_utils.c:\t Cycle %lu: durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
+                (unsigned long)i, ledData->cycles[i].durationOn, ledData->cycles[i].durationOff, ledData->cycles[i].ledRepetitions);
             }
+
+            // Schreiben der Daten in das EEPROM
+            printf("jsmn_utils.c:\t Data size to write: %lu bytes\r\n", (unsigned long)dataSize);
+            printf("jsmn_utils.c:\t LEDCycleData address: %p\r\n", (void*)ledData);
+
+            int writeStatus = at24_write(MEM_ADDR, (uint8_t*)ledData, dataSize, 1000);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+
+            // Überprüfen, ob das Schreiben erfolgreich war
+            if (writeStatus == 1) {
+                printf("jsmn_utils.c:\t Successfully wrote %lu bytes to EEPROM\r\n", (unsigned long)dataSize);
+
+                // Lesen der Daten aus dem EEPROM zum Verifizieren
+                LEDCycleData readData = {0};
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+
+                int readStatus = at24_read(MEM_ADDR, (uint8_t*)&readData, dataSize, 1000);
+
+                if (readStatus == 1) {
+                    printf("jsmn_utils.c:\t Successfully read %lu bytes from EEPROM\r\n", (unsigned long)dataSize);
+                    printf("jsmn_utils.c:\t Number of Cycles (read back): %u\r\n", (unsigned int)readData.numCycles);
+
+                    for (size_t i = 0; i < readData.numCycles; i++) {
+                        printf("jsmn_utils.c:\t Cycle %lu (read back): durationOn = %u, durationOff = %u, ledRepetitions = %u\r\n",
+                               (unsigned long)i, readData.cycles[i].durationOn, readData.cycles[i].durationOff, readData.cycles[i].ledRepetitions);
+                    }
+
+                    // Aktualisieren des Controller-Zustands
+                    if (osMutexAcquire(gControllerStateMutex, osWaitForever) == osOK) {
+                        gControllerState.readyForAutoRun = true;
+                        osMutexRelease(gControllerStateMutex);
+                        osEventFlagsSet(gControllerEventGroup, READY_FOR_AUTORUN_STATE_CHANGED_BIT);
+                    }
+
+                } else {
+                    printf("jsmn_utils.c:\t Failed to read from EEPROM, error code: %d\r\n", readStatus);
+                }
+            } else {
+                printf("jsmn_utils.c:\t Failed to write to EEPROM, error code: %d\r\n", writeStatus);
+            }
+
         } else {
-            printf("jsmn_utils.c:\t Failed to read from EEPROM, error code: %d\r\n", readStatus);
+            printf("FAILED\r\n");
         }
+
+        osMutexRelease(gEEPROMMutexHandle);
     } else {
-        printf("jsmn_utils.c:\t Failed to write to EEPROM, error code: %d\r\n", writeStatus);
+        printf("jsmn_utils.c:\t Failed to get MUTEX!\r\n");
     }
 }
+
 
 // Hilfsfunktion zum Vergleichen von JSON-Schlüsseln
 int jsoneq(const char* json, jsmntok_t* tok, const char* s) {

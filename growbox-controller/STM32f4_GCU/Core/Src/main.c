@@ -86,7 +86,7 @@ const osThreadAttr_t AliveTask_attributes = {
 osThreadId_t NetworkTaskHandle;
 const osThreadAttr_t NetworkTask_attributes = {
   .name = "NetworkTask",
-  .stack_size = 1024 * 4,
+  .stack_size = 1280 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for WaterController */
@@ -100,7 +100,7 @@ const osThreadAttr_t WaterController_attributes = {
 osThreadId_t WatcherTaskHandle;
 const osThreadAttr_t WatcherTask_attributes = {
   .name = "WatcherTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityBelowNormal2,
 };
 /* Definitions for LightTask */
@@ -127,10 +127,25 @@ osMessageQueueId_t xLightControllerQueueHandle;
 const osMessageQueueAttr_t xLightControllerQueue_attributes = {
   .name = "xLightControllerQueue"
 };
+/* Definitions for xWebSocketQueue */
+osMessageQueueId_t xWebSocketQueueHandle;
+const osMessageQueueAttr_t xWebSocketQueue_attributes = {
+  .name = "xWebSocketQueue"
+};
+/* Definitions for xAutoGrowQueue */
+osMessageQueueId_t xAutoGrowQueueHandle;
+const osMessageQueueAttr_t xAutoGrowQueue_attributes = {
+  .name = "xAutoGrowQueue"
+};
 /* Definitions for gControllerStateMutex */
 osMutexId_t gControllerStateMutexHandle;
 const osMutexAttr_t gControllerStateMutex_attributes = {
   .name = "gControllerStateMutex"
+};
+/* Definitions for gEEPROMMutex */
+osMutexId_t gEEPROMMutexHandle;
+const osMutexAttr_t gEEPROMMutex_attributes = {
+  .name = "gEEPROMMutex"
 };
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
@@ -216,11 +231,34 @@ int main(void)
 
 
   printf("main.c:\t - initialize Mutex and EventGroup\r\n");
-  gControllerStateMutex = osMutexNew(NULL);
-  gControllerEventGroup = osEventFlagsNew(NULL);
+  gControllerStateMutexHandle = osMutexNew(&gControllerStateMutex_attributes);
+  gEEPROMMutexHandle = osMutexNew(&gEEPROMMutex_attributes);
+  gControllerEventGroupHandle = osEventFlagsNew(&gControllerEventGroup_attributes);
   printf("main.c:\t - done\r\n");
 
 
+  // Init gControllerState as false
+  gControllerState.wasserbeckenZustand = false;
+  gControllerState.pumpeZulauf = false;
+  gControllerState.pumpeAblauf = false;
+  gControllerState.sensorVoll = false;
+  gControllerState.sensorLeer = false;
+  gControllerState.lightIntensity = 0;
+  gControllerState.readyForAutoRun = false;
+
+  // Erstellen Sie den Mutex
+  gControllerStateMutex = osMutexNew(NULL);
+  if (gControllerStateMutex == NULL) {
+	  // Fehlerbehandlung
+	printf("task_water_controller.c:\t Fehler beim erstellens des gControllerStateMutex");
+  }
+
+  // Erstellen Sie die Event-Gruppe
+  gControllerEventGroup = osEventFlagsNew(NULL);
+  if (gControllerEventGroup == NULL) {
+	  // Fehlerbehandlung
+	printf("task_water_controller.c:\t Fehler beim erstellen der gControllerEventGroup");
+  }
 
 
   /* USER CODE END 2 */
@@ -230,6 +268,9 @@ int main(void)
   /* Create the mutex(es) */
   /* creation of gControllerStateMutex */
   gControllerStateMutexHandle = osMutexNew(&gControllerStateMutex_attributes);
+
+  /* creation of gEEPROMMutex */
+  gEEPROMMutexHandle = osMutexNew(&gEEPROMMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -250,8 +291,25 @@ int main(void)
   /* creation of xLightControllerQueue */
   xLightControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xLightControllerQueue_attributes);
 
+  /* creation of xWebSocketQueue */
+  xWebSocketQueueHandle = osMessageQueueNew (10, sizeof(uint16_t), &xWebSocketQueue_attributes);
+
+  /* creation of xAutoGrowQueue */
+  xAutoGrowQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xAutoGrowQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
+  if (xWaterControllerQueueHandle == NULL) {
+        printf("main.c:\t Error: Failed to create xWaterControllerQueue\r\n");
+    }
+
+  if (xLightControllerQueueHandle == NULL) {
+      printf("main.c:\t Error: Failed to create xLightControllerQueue\r\n");
+  }
+
+  if (xAutoGrowQueueHandle == NULL) {
+       printf("main.c:\t Error: Failed to create xAutoGrowQueue\r\n");
+   }
+
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */

@@ -3,7 +3,7 @@
 
 #include "wizchip_conf.h"
 #include "cmsis_os2.h"
-
+#include <stdbool.h>
 
 extern osMessageQueueId_t xMessageQueueHandle;
 
@@ -17,6 +17,13 @@ extern osMessageQueueId_t xMessageQueueHandle;
 #define PING_INTERVAL 2000 // Interval in milliseconds to send ping
 #define WEBSOCKET_PING_OPCODE 0x9 // WebSocket Ping Opcode
 #define WEBSOCKET_MASK_KEY_SIZE 4
+
+
+
+typedef struct {
+    uint8_t target;
+    uint8_t value;
+} MessageForWebSocket;
 
 
 // Network configuration and initialization function
