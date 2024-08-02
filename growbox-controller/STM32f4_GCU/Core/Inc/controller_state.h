@@ -21,7 +21,7 @@ typedef struct {
     bool pumpeAblauf; // true = an, false = aus
     bool sensorVoll; // true = aktiviert, false = deaktiviert
     bool sensorLeer; // true = aktiviert, false = deaktiviert
-    int lightIntensity;
+    uint8_t lightIntensity;
     bool readyForAutoRun; // true wenn Daten korrekt im EEPROM gespeichert sind
 } ControllerState;
 

@@ -17,17 +17,43 @@ function Growbox() {
 	const [showGrowPlansModal, setShowGrowPlansModal] = useState(false);
 	const [selectedGrowPlan, setSelectedGrowPlan] = useState(null);
 	const [startFromHere, setStartFromHere] = useState(0);
+	
+	const [waterBeckenZustand, setWaterBeckenZustand] = useState(false);
+	const [lightIntensity, setLightIntensity] = useState(0);
+	
 
-	useEffect(() => {
-		// lade die Geräte sobald die Seite geöffnet wird
+	
+	
+	
+
+    useEffect(() => {
+        // Lade die Geräte sobald die Seite geöffnet wird
         fetchDevices();
-		
-		// Socket-Verbindung herstellen
-        socketService.connect('localhost', 8085, handleSocketMessage);
-		
-		return () => {
-			// Diese Funktion wird aufgerufen, wenn die Komponente demontiert wird
-			socketService.disconnect(); // Schließe die Socket-Verbindung
+        
+        // Socket-Verbindung herstellen und Nachricht senden
+        socketService.connect("192.168.178.25", 8085, handleWebSocketMessage);
+
+       // Nachricht senden, sobald die Verbindung hergestellt ist
+		// const intervalId = setInterval(() => {
+			// if (socketService.isConnected) {
+				// console.log("SocketServer ist verbunden - sende");
+
+				// //Angepasste Nachricht senden
+				// socketService.sendMessage(JSON.stringify({
+					// message_type: "register_message",
+					// payload: {
+						// device: "SocketServer",
+						// chipId: null,
+						// action: "register"
+					// }
+				// }));
+				// clearInterval(intervalId);
+			// }
+		// }, 100);
+        
+        return () => {
+            // Diese Funktion wird aufgerufen, wenn die Komponente demontiert wird
+            socketService.disconnect(); // Schließe die Socket-Verbindung
 		};
     }, []);
 	
@@ -55,95 +81,175 @@ function Growbox() {
 		}  
 	};
 
-    const fetchDevices = async () => {
-		console.log("Function call: fetchDevices");
-        
-		const username = "christoph";
-        const response = await fetch(`http://localhost:5000/devices?username=${username}`);
 
-		console.log("fetchDevices: response from server:", response);
-		
-        if (response.ok) {
-			console.log("fetchDevices: response ok");
-            const data = await response.json();
-			
-			console.log("fetchDevices: data.devices :");
-			console.log(data.devices);
-			
-			 // Initialisiere alle Geräte als nicht verbunden
-			setDevices(data.devices.map(device => ({ ...device, isConnected: false, controllerAlive: false })));
-			
-			// WebSocket-Verbindung initiieren
-            initiateSocketConnection();
-			
-        } else {
-            console.error("fetchDevices: HTTP-Error: " + response.status);
-        }
-    };
+
+const fetchDevices = async () => {
+    console.log("fetchDevices: Starting fetchDevices");
+
+    const username = "christoph";
+    const response = await fetch(`http://localhost:5000/devices?username=${username}`);
+
+    console.log("fetchDevices: response from server:", response);
+
+    if (response.ok) {
+        console.log("fetchDevices: response ok");
+        const data = await response.json();
+
+        console.log("fetchDevices: data.devices :");
+        console.log(data.devices);
+
+        // Initialisiere alle Geräte als nicht verbunden
+        setDevices(data.devices.map(device => ({ ...device, isConnected: false, controllerAlive: false })));
+
+        // Sammle alle chipId-Werte
+        const chipIds = data.devices.map(device => device.device_id);
+
+        // Sende die Registrierungsnachricht mit den gesammelten chipId-Werten
+        const registerMessage = JSON.stringify({
+            message_type: "register",
+			device : "Frontend",
+			chipIds: chipIds
+        });
+
+        console.log("fetchDevices: sende register message:");
+        console.log(registerMessage);
+        socketService.sendMessage(registerMessage);
+
+    } else {
+        console.error("fetchDevices: HTTP-Error: " + response.status);
+    }
+};
+
 	
-    const initiateWebSocketConnection = () => {
-		setShowModal(false);
-		
-        const ws = new WebSocket(process.env.REACT_APP_WS_URL);
-		
-        ws.onopen = () => {
-            console.log("WebSocket connection established");
-			sendRegisterMessage(selectedDeviceId);
-        };
-
-        ws.onmessage = handleWebSocketMessage;
-
-        ws.onclose = () => {
-            console.log("initiateWebSocketConnection: WebSocket connection closed");
-            // Setze isConnected für alle Geräte auf false, wenn die WebSocket-Verbindung geschlossen wird
-            // setDevices(devices => devices.map(device => ({ ...device, isConnected: false })));
-        };
-
-        //setWebsocket(ws);
-		websocketRef.current = ws; // Setze den WebSocket in useRef
-    };
-
-	const sendRegisterMessage = (deviceId) => {
-		const ws = websocketRef.current;
-		
-         if (ws && ws.readyState === WebSocket.OPEN) {
-            const registerMessage = JSON.stringify({
-                device: "Frontend",
-                chipId: deviceId,
-                message: "register",
-                action: "register"
-            });
-            ws.send(registerMessage);
-            console.log("Register message sent for device", deviceId);
-        }
-    };
 	
-	const handleWebSocketMessage = (message) => {
-		console.log("Message received:", message.data);
-		const data = JSON.parse(message.data);
+	
+	
+	const sendControlCommand = (chipId) => {
+		const controlMessage = JSON.stringify({
+			uid: chipId,
+			message_type: "control_command",
+			payload: {
+				target: "ControllerState",
+				action: "update",
+				value: true
+			}
+		});
 		
-		// Behandeln der Nachricht, die die Geräteliste enthält
-		if (data.type === "device_list") {
-			console.log("Geräteliste erhalten", data.devices);
-			
-			// Aktualisieren Sie den Zustand basierend auf der Geräteliste
-			setDevices(devices => devices.map(device => {
-				// Prüfen, ob das Gerät in der Liste ist
-				const isDeviceListed = data.devices.some(listedDevice => listedDevice.startsWith(device.device_id));
-				
-				// Zusätzlich prüfen, ob es sich um einen Controller handelt
-				const isControllerAlive = data.devices.includes(`${device.device_id}-controller`);
-
-				return {
-					...device,
-					isConnected: isDeviceListed, // Für Frontend-Geräte
-					controllerAlive: isControllerAlive // Spezifische Prüfung für Controller-Geräte
-				};
-			}));
-		}
-
-		setMessages(prevMessages => [...prevMessages, message.data]);
+		socketService.sendMessage(controlMessage);
+		console.log(`[DEBUG] Sent control command: ${controlMessage}`);
 	};
+
+	
+	
+		const handleWebSocketMessage = (event) => {
+        if (!event || !event.data) {
+            console.error("[ERROR] Received event or event.data is undefined");
+            return;
+        }
+
+        let data;
+        try {
+            if (typeof event.data === 'string') {
+                data = JSON.parse(event.data);
+            } else {
+                data = event.data;
+            }
+        } catch (error) {
+            console.error("[ERROR] Error parsing message data:", error);
+            return; // Überspringe die Verarbeitung
+        }
+
+        console.log("[DEBUG] Received data:", data);
+
+        if (data && typeof data === 'object' && data.message_type) {
+            const { message_type, controllers } = data;
+
+            if (message_type === "register_confirmed") {
+                console.log("[DEBUG] Registration confirmed", controllers);
+
+                setDevices(devices => devices.map(device => {
+                    const updatedDevice = { ...device };
+
+                    console.log("[DEBUG] Checking device:", device.device_id);
+
+                    if (controllers.hasOwnProperty(device.device_id)) {
+                        console.log("Found connected device: ", device.device_id);
+                        updatedDevice.isConnected = true;
+                        updatedDevice.controllerAlive = controllers[device.device_id].length > 0;
+                        console.log(`Device ${device.device_id} is connected: ${updatedDevice.isConnected}, controllerAlive: ${updatedDevice.controllerAlive}`);
+                    }
+
+                    return updatedDevice;
+                }));
+            }
+			else if (message_type === "controller_update") {
+                const { chipID, status } = data;
+                console.log("[DEBUG] Controller update received", data);
+                setDevices(devices => devices.map(device => {
+                    if (device.device_id === chipID) {
+                        return { ...device, controllerAlive: status === "connected" };
+                    }
+                    return device;
+                }));
+            }
+
+            setMessages(prevMessages => [...prevMessages, event.data]);
+        } else {
+            console.error("[ERROR] Invalid message format:", data);
+        }
+    };
+
+
+
+
+const sendWebSocketMessage = (message) => {
+    if (socketService.isConnected() && socketService.socket.readyState === WebSocket.OPEN) {
+        socketService.sendMessage(JSON.stringify(message));
+    } else {
+        console.error("WebSocket-Verbindung ist nicht offen.");
+        // Versuchen, die Verbindung erneut herzustellen
+        socketService.connect("192.168.178.25", 8085, handleWebSocketMessage);
+        // Verzögertes Senden der Nachricht nach erneuter Verbindung
+        setTimeout(() => {
+            if (socketService.isConnected() && socketService.socket.readyState === WebSocket.OPEN) {
+                socketService.sendMessage(JSON.stringify(message));
+            } else {
+                console.error("WebSocket-Verbindung konnte nicht hergestellt werden.");
+            }
+        }, 1000);
+    }
+};
+
+
+
+
+const handleWaterBeckenZustandChange = (event) => {
+    const value = event.target.checked ? 1 : 0; // Verwenden von 1 und 0 statt true und false
+    setWaterBeckenZustand(value);
+    const message = {
+        uid: selectedDeviceId,
+        message_type: "control_command",
+        target: "wasserbeckenZustand",
+        action: "set",
+        value: value
+    };
+    sendWebSocketMessage(message);
+};
+
+const handleLightIntensityChange = (event) => {
+    const value = parseInt(event.target.value, 10);
+    setLightIntensity(value);
+    const message = {
+        uid: selectedDeviceId,
+        message_type: "control_command",
+        target: "LightIntensity",
+        action: "set",
+        value: value
+    };
+    sendWebSocketMessage(message);
+};
+
+
 	
     const updateDeviceConnectionStatus = (deviceId, isConnected) => {
         setDevices(devices => devices.map(device =>
@@ -151,42 +257,15 @@ function Growbox() {
         ));
     };
 
-    const handleDeviceClick = (deviceId) => {
-        setSelectedDeviceId(deviceId);
-        setShowModal(true);
-    };
+const handleDeviceClick = (deviceId) => {
+    setSelectedDeviceId(deviceId);
+    setShowModal(true);
+    // Hier können Sie initiale Werte für das Modal festlegen, falls gewünscht
+    setWaterBeckenZustand(false); // Beispiel initialer Wert
+    setLightIntensity(0); // Beispiel initialer Wert
+};
 	
 
-	
-	const AskControllerToConnect = (event) => {
-		// Stoppen des Event-Bubblings
-		
-		event.stopPropagation();
-
-		const requestData = { device_id: selectedDeviceId };
-		console.log('RequestedData: ', requestData);
-		console.log("RequestedData:");
-		fetch(`${process.env.REACT_APP_API_URL}/ask-growbox-to-socket-connect`, {
-		  method: "POST",
-		  headers: {
-			'Content-Type': 'application/json',
-		  },
-		  body: JSON.stringify(requestData),
-		})
-		.then(response => {
-		  if (!response.ok) {
-			throw new Error('Netzwerkantwort war nicht ok');
-		  }
-		  return response.json();
-		})
-		.then(data => {
-		  console.log('Erfolg:', data);
-		  // Hier könnten Sie weitere Aktionen durchführen, basierend auf der Antwort
-		})
-		.catch(error => {
-		  console.error('Fehler:', error);
-		});
-	};
 
 	async function getCompleteGrowPlans() {
 	  // Iteriere über alle growPlans und transformiere jedes Element in ein Promise, 
@@ -216,23 +295,13 @@ function Growbox() {
 	  return completeGrowPlans;
 	}
 
-	const downloadJson = (data, filename) => {
-		const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = filename;
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-	};
 
 	const sendCommandToGrowbox = async (deviceID, action) => {
 		console.log("sendCommandToGrowbox: function call");
 		console.log("action: " + action);
 
-			
 		// Überprüfen, ob die WebSocket-Verbindung offen ist
+			
 		if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
 			// Nachricht zum Senden der Growplan-Daten vorbereiten
 			const message = JSON.stringify({
@@ -345,48 +414,52 @@ function Growbox() {
         sendCommandToGrowbox(deviceId, "stopGrow");
     };
 	
-    return (
+        return (
         <div>
             <h1>Growboxen</h1>
 			
 			
 			
-			<div className="devices-container">
-				{devices.map((device, index) => (
-					<div key={index} 
-						className={`device ${device.status} ${device.isConnected ? 'connected' : 'disconnected'}`}
-						onClick={() => handleDeviceClick(device.device_id)}>
-						<p>Device Chipd-ID: {device.device_id}</p>
-						<p><Button
-							variant="primary"
-							onClick={(event) => AskControllerToConnect(event)} // Übergeben des Event-Objekts und Aufrufen von stopPropagation
-						>
-							Request Controller Socket Connection
-						</Button></p>
-						
-						<p>Frontend to Socket <span className={`status-dot ${device.isConnected ? 'connected' : 'disconnected'}`}></span></p>
-						<p>Controller to Socket <span className={`status-dot ${device.controllerAlive ? 'connected' : 'disconnected'}`}></span></p>
-						<p>Growprogram is running <span className={`status-dot ${device.controllerRunning ? 'running' : 'notRunning'}`}></span></p>
-						
-						
-						<Button
-							variant="success"
-							onClick={(event) => {
-								event.stopPropagation(); // Verhindert das Event-Bubbling
-								setShowGrowPlansModal(true);
-								fetchGrowPlans();
-							}}
-							style={{ marginTop: "20px" }}
-						>
-							Growplan auswählen
-						</Button>
-						
-						<p></p>
-						<Button variant="success" onClick={(event) => {handleRunClick(device.device_id, event);}}>Run</Button>
-						<Button variant="success" onClick={(event) => {handleStopClick(device.device_id, event);}}>Stop</Button>
-					</div>
-				))}
-			</div>
+<div className="devices-container">
+    {devices.map((device, index) => (
+        <div key={index} 
+			className={`device ${device.status} ${device.isConnected ? 'connected' : 'disconnected'}`}
+            onClick={() => handleDeviceClick(device.device_id)}>
+            <p>Device Chip-ID: {device.device_id}</p>
+            <p>
+
+            </p>
+            
+            <p>Frontend to Socket 
+				<span className={`status-dot ${device.isConnected ? 'connected' : 'disconnected'}`}></span>
+            </p>
+            <p>Controller to Socket 
+				<span className={`status-dot ${device.controllerAlive ? 'connected' : 'disconnected'}`}></span>
+            </p>
+            <p>Growprogram is running 
+				<span className={`status-dot ${device.controllerRunning ? 'running' : 'notRunning'}`}></span>
+            </p>
+            
+            <Button
+                variant="success"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    setShowGrowPlansModal(true);
+                    fetchGrowPlans();
+                }}
+                style={{ marginTop: "20px" }}
+            >
+                Growplan auswählen
+            </Button>
+            
+            <p></p>
+            <Button variant="success" onClick={(event) => { handleRunClick(device.device_id, event); }}>Run</Button>
+            <Button variant="success" onClick={(event) => { handleStopClick(device.device_id, event); }}>Stop</Button>
+        </div>
+    ))}
+</div>
+
+
 			
 			
 			
@@ -437,22 +510,42 @@ function Growbox() {
 
 
 
+<Modal show={showModal} onHide={() => setShowModal(false)}>
+    <Modal.Header closeButton>
+        <Modal.Title>Growbox Verbindung</Modal.Title>
+    </Modal.Header>
+    <Modal.Body>
+        <Form>
+            <Form.Group controlId="formWaterBeckenZustand">
+                <Form.Check 
+                    type="checkbox"
+                    label="Wasserbecken Zustand"
+                    checked={waterBeckenZustand === 1} // Anpassung für 1 und 0
+                    onChange={handleWaterBeckenZustandChange}
+                />
+            </Form.Group>
+            <Form.Group controlId="formLightIntensity">
+                <Form.Label>Lichtintensität</Form.Label>
+                <Form.Control 
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={lightIntensity}
+                    onChange={handleLightIntensityChange}
+                />
+            </Form.Group>
+        </Form>
+    </Modal.Body>
+    <Modal.Footer>
+        <Button variant="secondary" onClick={() => setShowModal(false)}>Abbrechen</Button>
+    </Modal.Footer>
+</Modal>
 
 
-			<Modal show={showModal} onHide={() => setShowModal(false)}>
-				<Modal.Header closeButton>
-					<Modal.Title>Growbox Verbindung</Modal.Title>
-				</Modal.Header>
-				<Modal.Body>
-					Wollen Sie eine Verbindung zur Growbox {selectedDeviceId} aufbauen?
-				</Modal.Body>
-				<Modal.Footer>
-					<Button variant="secondary" onClick={() => setShowModal(false)}>Abbrechen</Button>
-					<Button variant="primary" onClick={initiateWebSocketConnection}>Verbinden</Button>
-				</Modal.Footer>
-			</Modal>
+
 	</div>
     );
+
 }
 
 export default Growbox;

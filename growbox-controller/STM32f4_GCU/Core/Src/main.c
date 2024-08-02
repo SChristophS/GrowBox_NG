@@ -43,6 +43,8 @@
 #include "task_light_controller.h"
 #include "task_grower.h"
 
+#include "globals.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -153,7 +155,7 @@ const osEventFlagsAttr_t gControllerEventGroup_attributes = {
   .name = "gControllerEventGroup"
 };
 /* USER CODE BEGIN PV */
-
+char uidStr[25];
 
 /* USER CODE END PV */
 
@@ -180,6 +182,20 @@ void InitControllerState(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// UID auslesen und anzeigen
+void GetSTM32UID(char *uidStr) {
+    uint32_t uid[3];
+    uid[0] = *(uint32_t *)0x1FFF7A10;
+    uid[1] = *(uint32_t *)0x1FFF7A14;
+    uid[2] = *(uint32_t *)0x1FFF7A18;
+
+    if (sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]) < 0) {
+        printf("task_network.c:\t - Error formatting UID string\r\n");
+        return;
+    }
+}
+
+
 
 
 /* USER CODE END 0 */
@@ -237,6 +253,15 @@ int main(void)
   printf("main.c:\t - done\r\n");
 
 
+
+  GetSTM32UID(uidStr);
+  printf("main.c:\t STM32 UID ausgelesen und gespeichert: %s\r\n", uidStr);
+
+  //
+  printf("Size of MessageForWebSocket: %lu bytes\n", (unsigned long)sizeof(MessageForWebSocket));
+
+
+
   // Init gControllerState as false
   gControllerState.wasserbeckenZustand = false;
   gControllerState.pumpeZulauf = false;
@@ -286,16 +311,16 @@ int main(void)
 
   /* Create the queue(s) */
   /* creation of xWaterControllerQueue */
-  xWaterControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xWaterControllerQueue_attributes);
+  xWaterControllerQueueHandle = osMessageQueueNew (2, sizeof(uint8_t), &xWaterControllerQueue_attributes);
 
   /* creation of xLightControllerQueue */
-  xLightControllerQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xLightControllerQueue_attributes);
+  xLightControllerQueueHandle = osMessageQueueNew (16, sizeof(uint8_t), &xLightControllerQueue_attributes);
 
   /* creation of xWebSocketQueue */
-  xWebSocketQueueHandle = osMessageQueueNew (10, sizeof(uint16_t), &xWebSocketQueue_attributes);
+  xWebSocketQueueHandle = osMessageQueueNew (10, 6, &xWebSocketQueue_attributes);
 
   /* creation of xAutoGrowQueue */
-  xAutoGrowQueueHandle = osMessageQueueNew (16, sizeof(uint16_t), &xAutoGrowQueue_attributes);
+  xAutoGrowQueueHandle = osMessageQueueNew (2, sizeof(uint8_t), &xAutoGrowQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   if (xWaterControllerQueueHandle == NULL) {

@@ -9,12 +9,15 @@
 #include <stdbool.h>
 #include "socket.h"
 #include "stdlib.h"
-
 #include "dhcp/dhcp.h"
 #include "dns/dns.h"
 #include "controller_state.h"
-
 #include "jsmn_utils.h"
+#include "globals.h"
+#include "helper_websocket.h"
+#include <inttypes.h> // notwendig für PRIuSIZE
+
+
 
 // Network configuration - without DHCP
 wiz_NetInfo defaultNetInfo = {
@@ -33,6 +36,10 @@ uint8_t Domain_IP[4] = {0}; // Translated IP address by DNS Server
 uint8_t Domain_name[] = "www.google.com";
 uint8_t flag_process_dhcp_success = OFF;
 uint8_t flag_process_dns_success = OFF;
+
+
+
+
 
 void print_network_information(void) {
     wizchip_getnetinfo(&defaultNetInfo);
@@ -164,16 +171,25 @@ int upgrade_to_websocket(uint8_t sn) {
 
 
 
-void send_websocket_message(uint8_t sock, MessageForWebSocket msg) {
-    // Konvertiere die Struktur in eine JSON-ähnliche Zeichenkette
-    char message[256];
-    snprintf(message, sizeof(message), "{\"target\": %u, \"value\": %s}", msg.target, msg.value ? "true" : "false");
 
-    size_t message_len = strlen(message);
+
+void send_websocket_message(uint8_t sock, MessageForWebSocket *message) {
+    // Nachricht als JSON-String erstellen
+    char json_message[256];
+
+    snprintf(json_message, sizeof(json_message),
+             "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"target\":\"%s\",\"action\":\"%s\",\"value\":%u}",
+             uidStr,
+             message_type_to_string(message->message_type),
+             device_to_string(message->device),
+             target_to_string(message->target),
+             action_to_string(message->action),
+             message->value);
+
+    size_t message_len = strlen(json_message);
+
     size_t frame_size;
     uint8_t *websocket_frame;
-
-    printf("task_network.c: Preparing to send message: %s\r\n", message);
 
     // Berechnen der Frame-Größe basierend auf der Nachrichtengröße
     if (message_len <= 125) {
@@ -214,12 +230,18 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket msg) {
     memcpy(&websocket_frame[offset], masking_key, 4);
     offset += 4;
 
-    // Anwenden der Maskierung auf die Payload
+    // Nachrichtenstruktur serialisieren und maskieren
     for (size_t i = 0; i < message_len; i++) {
-        websocket_frame[offset + i] = message[i] ^ masking_key[i % 4];
+        websocket_frame[offset + i] = json_message[i] ^ masking_key[i % 4];
     }
 
-    printf("task_network.c: Sending WebSocket frame with length: %zu\r\n", frame_size);
+    printf("task_network.c: Sending WebSocket frame with length: %lu\r\n", (unsigned long)frame_size);
+
+    printf("WebSocket frame (hex): ");
+    for (size_t i = 0; i < frame_size; i++) {
+        printf("%02x ", websocket_frame[i]);
+    }
+    printf("\n");
 
     // Sende den Frame und prüfe auf Fehler
     int32_t total_sent = 0;
@@ -233,11 +255,16 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket msg) {
         total_sent += sent;
     }
 
-    printf("task_network.c: Sent message: %s\r\n", message);
+    printf("task_network.c: Send following JSON message:\r\n");
+    printf("  JSON: %s\r\n", json_message);
 
     // Speicher freigeben
     free(websocket_frame);
 }
+
+
+
+
 
 
 
@@ -302,11 +329,16 @@ void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_por
                 if (upgrade_to_websocket(sock) == 0) {
                     printf("task_network.c:\t WebSocket upgrade successful.\r\n");
                     *websocket_upgraded = 1;
+
+                    add_message_to_websocket_queue(MESSAGE_TYPE_REGISTER, DEVICE_CONTROLLER, 0, 0, 0);
+
                 } else {
                     printf("task_network.c:\t WebSocket upgrade failed.\r\n");
                     close(sock);
                 }
             }
+
+
             break;
 
         default:
@@ -314,6 +346,23 @@ void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_por
             break;
     }
 }
+
+void process_websocket_messages(void) {
+    // process websocket message from queue
+
+	MessageForWebSocket msg;
+
+    while (osMessageQueueGet(xWebSocketQueueHandle, &msg, NULL, 0) == osOK) {
+
+        printf("task_network.c: Folgende Nachricht wurde aus der queue ausgelesen: message_type: %d, device: %d, target: %d, action: %d, value: %d\r\n",
+        		msg.message_type, msg.device, msg.target, msg.action, msg.value);
+
+        printf("task_network.c:\t weiterleiten an send_websocket_message \r\n");
+        send_websocket_message(SOCK_DHCP, &msg);
+    }
+}
+
+
 
 void StartNetworkTask(void *argument) {
     printf("task_network.c: StartwebSocketTask\r\n");
@@ -359,13 +408,10 @@ void StartNetworkTask(void *argument) {
             }
         }
 
+        // wenn es nachrichten in der queue gibt werden diese
+        // hier gesendet
+        process_websocket_messages();
 
-        MessageForWebSocket msg;
-        // Nachrichten aus der WebSocket-Queue senden
-        while (osMessageQueueGet(xWebSocketQueueHandle, &msg, NULL, 0) == osOK) {
-            printf("task_network.c: Struct msg - target: %u, value: %d\r\n", msg.target, msg.value);
-            send_websocket_message(SOCK_DHCP, msg);
-        }
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }

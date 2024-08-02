@@ -8,13 +8,17 @@
 
 void PWM_SetDutyCycle(TIM_HandleTypeDef *htim, uint32_t Channel, uint16_t DutyCycle)
 {
-    // Berechne die Pulse-Werte basierend auf dem Periodenwert
-    uint32_t Pulse = ((htim->Init.Period + 1) * DutyCycle) / 100 - 1;
+    // Invertiere den DutyCycle-Wert
+    uint32_t InvertedDutyCycle = 100 - DutyCycle;
 
-    printf("task_light_controller.c:\tset dutyciclye to: %ld\r\n", Pulse);
+    // Berechne den Pulse-Wert basierend auf der Periodenwert
+    uint32_t Pulse = (InvertedDutyCycle * (htim->Init.Period + 1)) / 100;
+
+    printf("task_light_controller.c:\tset dutyciclye to: %lu\r\n", Pulse);
 
     __HAL_TIM_SET_COMPARE(htim, Channel, Pulse);
 }
+
 
 
 void UpdateLightControllerState(int lightIntensity) {
@@ -41,8 +45,8 @@ void StartLightTask(void *argument)
 {
   /* USER CODE BEGIN StartLightTask */
 
-	int lightIntensity;
-	int lightIntensity_before = 0;
+	uint8_t lightIntensity;
+	uint8_t lightIntensity_before = 0;
 
   // Initialisiere den PWM-Timer
   if (HAL_TIM_PWM_Start(&LED_DIM_TIM, LED_DIM_CHANNEL) != HAL_OK) {
@@ -72,7 +76,7 @@ void StartLightTask(void *argument)
     	  ControlLight(gControllerState.lightIntensity);
       }
 
-    osDelay(100);
+      vTaskDelay(10 / portTICK_PERIOD_MS);
 
   }
   /* USER CODE END StartLightTask */

@@ -20,10 +20,8 @@ extern osMessageQueueId_t xMessageQueueHandle;
 
 
 
-typedef struct {
-    uint8_t target;
-    uint8_t value;
-} MessageForWebSocket;
+
+
 
 
 // Network configuration and initialization function
