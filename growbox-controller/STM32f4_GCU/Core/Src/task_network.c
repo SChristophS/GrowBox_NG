@@ -285,7 +285,7 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size) {
         payload_length = ((uint64_t)buf[2] << 56) + ((uint64_t)buf[3] << 48) + ((uint64_t)buf[4] << 40) + ((uint64_t)buf[5] << 32) + (buf[6] << 24) + (buf[7] << 16) + (buf[8] << 8) + buf[9];
     }
 
-    printf("task_network.c:\t Payload length: %llu\r\n", payload_length);
+    printf("task_network.c:\t Payload length: %lu\r\n", (unsigned long)payload_length);
 
     if (payload_length > DATA_BUF_SIZE - 1) {
         printf("task_network.c:\t Received payload is too large\r\n");
@@ -294,11 +294,13 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size) {
 
     // Payload extrahieren
     char *payload = (char *)(buf + header_length);
+    payload[payload_length] = '\0'; // Sicherstellen, dass die Payload als String abgeschlossen ist
     printf("task_network.c:\t Bereinigte Nachricht: %.*s\r\n", (int)payload_length, payload);
 
     // Payload verarbeiten
     process_received_data(payload);
 }
+
 
 void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, uint8_t destip[4], uint16_t destport, int *websocket_upgraded) {
     switch (*socket_status) {
@@ -413,7 +415,7 @@ void StartNetworkTask(void *argument) {
         process_websocket_messages();
 
 
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 
     // Puffer nach Beendigung der Schleife freigeben

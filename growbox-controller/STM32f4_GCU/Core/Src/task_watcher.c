@@ -87,25 +87,78 @@ void StartWatcherTask(void *argument) {
             if (eventFlags & PUMP_ZULAUF_STATE_CHANGED_BIT) {
                 // State of Pump 1 changed
                 printf("task_watcher.c: Zustand von Pumpe Zulauf hat sich geaendert\r\n");
-                // Put message in the appropriate queue
+
+                osMutexAcquire(gControllerStateMutex, osWaitForever);
+                bool pumpeZulauf = gControllerState.pumpeZulauf;
+                osMutexRelease(gControllerStateMutex);
+
+                if (osMessageQueuePut(xWaterControllerQueueHandle, &pumpeZulauf, 0, 0) != osOK) {
+                    printf("task_watcher.c: Failed to send message to WaterControllerQueue.\r\n");
+                } else {
+                    printf("task_watcher.c: Queue hat neuen Zustand erhalten => pumpeZulauf.\r\n");
+                }
+
+                // Message for WebSocket
+                add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_PUMPE_ZULAUF, ACTION_UPDATE, pumpeZulauf);
+
             }
 
             if (eventFlags & PUMP_ABLAUF_STATE_CHANGED_BIT) {
                 // State of Pump 2 changed
                 printf("task_watcher.c: Zustand von Pumpe Ablauf hat sich geaendert\r\n");
+
                 // Put message in the appropriate queue
+                osMutexAcquire(gControllerStateMutex, osWaitForever);
+                bool pumpeAblauf = gControllerState.pumpeAblauf;
+                osMutexRelease(gControllerStateMutex);
+
+                if (osMessageQueuePut(xWaterControllerQueueHandle, &pumpeAblauf, 0, 0) != osOK) {
+                    printf("task_watcher.c: Failed to send message to WaterControllerQueue.\r\n");
+                } else {
+                    printf("task_watcher.c: Queue hat neuen Zustand erhalten => pumpeAblauf.\r\n");
+                }
+
+                // Message for WebSocket
+                add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_PUMPE_ABLAUF, ACTION_UPDATE, pumpeAblauf);
+
             }
 
             if (eventFlags & SENSOR_VOLL_STATE_CHANGED_BIT) {
                 // State of Sensor Full changed
                 printf("task_watcher.c: Zustand von Sensor Voll hat sich geaendert\r\n");
                 // Put message in the appropriate queue
+
+                osMutexAcquire(gControllerStateMutex, osWaitForever);
+                bool sensorVoll = gControllerState.sensorVoll;
+                osMutexRelease(gControllerStateMutex);
+
+                if (osMessageQueuePut(xWaterControllerQueueHandle, &sensorVoll, 0, 0) != osOK) {
+                    printf("task_watcher.c: Failed to send message to WaterControllerQueue.\r\n");
+                } else {
+                    printf("task_watcher.c: Queue hat neuen Zustand erhalten => sensorVoll.\r\n");
+                }
+
+                // Message for WebSocket
+                add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_SENSOR_VOLL, ACTION_UPDATE, sensorVoll);
             }
 
             if (eventFlags & SENSOR_LEER_STATE_CHANGED_BIT) {
                 // State of Sensor Empty changed
                 printf("task_watcher.c: Zustand von Sensor Leer hat sich geaendert\r\n");
                 // Put message in the appropriate queue
+
+                osMutexAcquire(gControllerStateMutex, osWaitForever);
+                bool sensorLeer = gControllerState.sensorLeer;
+                osMutexRelease(gControllerStateMutex);
+
+                if (osMessageQueuePut(xWaterControllerQueueHandle, &sensorLeer, 0, 0) != osOK) {
+                    printf("task_watcher.c: Failed to send message to WaterControllerQueue.\r\n");
+                } else {
+                    printf("task_watcher.c: Queue hat neuen Zustand erhalten => sensorVoll.\r\n");
+                }
+
+                // Message for WebSocket
+                add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_SENSOR_LEER, ACTION_UPDATE, sensorLeer);
             }
 
             // CPU bisschen entlasten damit die anderen Tasks auch genug Leistung haben

@@ -16,7 +16,7 @@ class SocketService {
         this.socket.onmessage = (event) => {
             console.log(`[DEBUG] Data received from server: ${event.data}`);
             if (onMessage) {
-                onMessage(event); // Pass the event object instead of event.data
+                onMessage(event);
             }
         };
 

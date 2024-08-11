@@ -19,7 +19,7 @@
 const char* message_type_to_string(uint8_t message_type) {
     switch (message_type) {
         case MESSAGE_TYPE_REGISTER: return "register";
-        case MESSAGE_TYPE_UPDATE: return "update";
+        case MESSAGE_TYPE_UPDATE: return "controller_update";
         default: return "unknown";
     }
 }
@@ -34,8 +34,13 @@ const char* device_to_string(uint8_t device) {
 
 const char* target_to_string(uint8_t target) {
     switch (target) {
-        case TARGET_WATER_LEVEL: return "water_level";
-        case TARGET_LIGHT_INTENSITY: return "light_intensity";
+        case TARGET_WATER_LEVEL: return "wasserbeckenZustand";
+        case TARGET_LIGHT_INTENSITY: return "lightIntensity";
+        case TARGET_READYFORAUTORUN: return "readyForAutoRun";
+        case TARGET_PUMPE_ZULAUF: return "pumpeZulauf";
+        case TARGET_PUMPE_ABLAUF: return "pumpeAblauf";
+        case TARGET_SENSOR_VOLL: return "sensorVoll";
+        case TARGET_SENSOR_LEER: return "sensorLeer";
         default: return "unknown";
     }
 }
@@ -54,32 +59,16 @@ void add_message_to_websocket_queue(uint8_t message_type, uint8_t device, uint8_
 
     msg.message_type = message_type;
     msg.device = device;
+    msg.target = target;
+    msg.action = action;
+    msg.value = value;
 
-    // Überprüfen, ob target, action und value gesetzt sind
-    if (target != 0) {
-        msg.target = target;
-    } else {
-        msg.target = 255; // Spezieller Wert für nicht gesetztes Ziel
-    }
-
-    if (action != 0) {
-        msg.action = action;
-    } else {
-        msg.action = 255; // Spezieller Wert für nicht gesetzte Aktion
-    }
-
-    if (value != 0) {
-        msg.value = value;
-    } else {
-        msg.value = 65535; // Spezieller Wert für nicht gesetzten Wert
-    }
-
-    printf("task_watcher.c: I add the target %d with the action %d and value %u\r\n", msg.target, msg.action, msg.value);
+    printf("helper_websocket.c: I add the target %d with the action %d and value %u\r\n", msg.target, msg.action, msg.value);
 
     if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
-        printf("task_watcher.c: Failed to send message to WebSocketQueue.\r\n");
+        printf("helper_websocket.c: Failed to send message to WebSocketQueue.\r\n");
     } else {
-        printf("task_watcher.c: new entry in WebSocketQueue: message_type=%d, device=%d, target=%d, action=%d, value=%u\r\n",
+        printf("helper_websocket.c: new entry in WebSocketQueue: message_type=%d, device=%d, target=%d, action=%d, value=%u\r\n",
                msg.message_type, msg.device, msg.target, msg.action, msg.value);
     }
 }

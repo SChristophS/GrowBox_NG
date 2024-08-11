@@ -7,6 +7,10 @@
 #include "jsmn.h"
 #include "led_cycles.h"
 #include "at24cxx.h"
+#include "helper_websocket.h"
+#include "globals.h"
+
+
 
 
 extern osMutexId_t gEEPROMMutexHandle;
@@ -165,7 +169,7 @@ void process_received_data(const char* data) {
 
     // Schleife über alle Tokens im JSON-Dokument
     for (int i = 1; i < token_count; i++) {
-        if (jsoneq(data, &tokens[i], "uid") == 0) {
+        if (jsoneq(data, &tokens[i], "UID") == 0) {
             // Extrahiere uid
             snprintf(uid, sizeof(uid), "%.*s", tokens[i + 1].end - tokens[i + 1].start, data + tokens[i + 1].start);
             printf("jsmn_utils.c:\t Found uid: %s\r\n", uid);
@@ -191,9 +195,25 @@ void process_received_data(const char* data) {
     }
 
     // Verarbeite die extrahierten Daten basierend auf dem message_type und den anderen Feldern
-    if (strcmp(message_type, "control_command") == 0 && strcmp(action, "set") == 0) {
+    if (strcmp(message_type, "update") == 0 && strcmp(target, "all") == 0 && strcmp(action, "init") == 0) {
+        printf("jsmn_utils.c:\t Detected message_type: update, target: all, action: init\r\n");
 
+        // Sende alle Werte des ControllerState nacheinander
+        osMutexAcquire(gControllerStateMutex, osWaitForever);
+
+        add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_WATER_LEVEL, ACTION_UPDATE, gControllerState.wasserbeckenZustand);
+        add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_PUMPE_ZULAUF, ACTION_UPDATE, gControllerState.pumpeZulauf);
+        add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_PUMPE_ABLAUF, ACTION_UPDATE, gControllerState.pumpeAblauf);
+        add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_SENSOR_VOLL, ACTION_UPDATE, gControllerState.sensorVoll);
+        add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_SENSOR_LEER, ACTION_UPDATE, gControllerState.sensorLeer);
+        add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_LIGHT_INTENSITY, ACTION_UPDATE, gControllerState.lightIntensity);
+        add_message_to_websocket_queue(MESSAGE_TYPE_UPDATE, DEVICE_CONTROLLER, TARGET_READYFORAUTORUN, ACTION_UPDATE, gControllerState.readyForAutoRun);
+
+
+        osMutexRelease(gControllerStateMutex);
+    } else if (strcmp(message_type, "control_command") == 0 && strcmp(action, "set") == 0) {
         printf("jsmn_utils.c:\t Detected message_type: control_command and action set for target: %s\r\n", target);
+
         osMutexAcquire(gControllerStateMutex, osWaitForever);
 
         if (strcmp(target, "wasserbeckenZustand") == 0) {
@@ -206,8 +226,8 @@ void process_received_data(const char* data) {
             osEventFlagsSet(gControllerEventGroup, LIGHT_INTESITY_CHANGED_BIT);
         }
         osMutexRelease(gControllerStateMutex);
-
     }
 }
+
 
 

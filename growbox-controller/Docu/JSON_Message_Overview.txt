@@ -9,8 +9,17 @@
   "target": "wasserbeckenZustand",
   "action": "change",
   "value": 0
-  }
-}
+ }
+ 
+ 
+{
+  "target_UUID": "asd123asdasdasd",
+  "message_type": "update",
+  "target": "all",
+  "action": "init",
+  "value": 0
+ }
+ 
 
 {
   "target_UUID": "asd123asdasdasd",

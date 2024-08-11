@@ -18,6 +18,10 @@ extern char uidStr[25];
 #define TARGET_WATER_LEVEL 1
 #define TARGET_LIGHT_INTENSITY 2
 #define TARGET_READYFORAUTORUN 3
+#define TARGET_PUMPE_ZULAUF 4
+#define TARGET_PUMPE_ABLAUF 5
+#define TARGET_SENSOR_VOLL 6
+#define TARGET_SENSOR_LEER 7
 
 // Define actions
 #define ACTION_SET 1
