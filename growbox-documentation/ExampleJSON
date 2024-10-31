@@ -1,0 +1,69 @@
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+	"device":       "frontend",
+    "message_type": "newGrowCycle",
+    "payload": {
+        "target": "growCycle",
+        "action": "newGrowCycle",
+        "value": {
+            "startGrowTime": "2024-12-31T23:59:59",
+            "ledSchedules": [
+                {
+                    "durationOn": 30,
+                    "durationOff": 30,
+                    "repetition": 10
+                },
+                {
+                    "durationOn": 10,
+                    "durationOff": 10,
+                    "repetition": 5
+                }
+            ],
+            "wateringSchedules": [
+                {
+                    "status1": "full",
+                    "duration1": 300,
+                    "status2": "empty",
+                    "duration2": 300,
+                    "waterRepetitions": 1
+                },
+                {
+                    "status1": "full",
+                    "duration1": 60,
+                    "status2": "empty",
+                    "duration2": 60,
+                    "waterRepetitions": 1
+                }
+            ],
+            "temperatureTargets": [
+                {
+                    "targetTemperature": 24,
+                    "duration": 60
+                }
+            ],
+            "humidityTargets": [
+                {
+                    "targetHumidity": 60,
+                    "duration": 60
+                },
+                {
+                    "targetHumidity": 65,
+                    "duration": 60
+                }
+            ],
+            "airFilterSchedules": [
+                {
+                    "durationOn": 30,
+                    "durationOff": 30,
+                    "repetition": 10
+                },
+                {
+                    "durationOn": 30,
+                    "durationOff": 30,
+                    "repetition": 10
+                }
+            ]
+        }
+    }
+}
