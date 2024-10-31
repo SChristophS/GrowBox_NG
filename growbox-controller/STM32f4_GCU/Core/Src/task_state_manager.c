@@ -91,7 +91,7 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
 
     printf("task_state_manager.c: Size of GrowCycleConfig expected: %lu bytes\r\n", (unsigned long)sizeof(GrowCycleConfig));
 
-    /*
+
     // Debug-Ausgaben des geladenen Konfigurationsinhalts
     printf("task_state_manager.c: GrowCycleConfig loaded successfully\r\n");
     printf("task_state_manager.c: totalGrowTime: %lu\r\n", (unsigned long)config->totalGrowTime);
@@ -113,7 +113,7 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
         printf("task_state_manager.c: Watering Schedule %d: status1=%s, duration1=%lu s, status2=%s, duration2=%lu s, waterRepetitions=%d\r\n",
                i, schedule->status1, (unsigned long)schedule->duration1, schedule->status2, (unsigned long)schedule->duration2, schedule->waterRepetitions);
     }
-    */
+
 
 
     return true;

@@ -60,6 +60,7 @@ void StartLightTask(void *argument)
     // Variablen für die Lichtsteuerung
     GrowCycleConfig growConfig;
     bool configLoaded = false;
+    bool finished = false;
 
     // Lade die Konfiguration
     if (load_grow_cycle_config(&growConfig)) {
@@ -89,6 +90,8 @@ void StartLightTask(void *argument)
             // Zum Beispiel, wenn du manuell die Lichtintensität einstellen möchtest
         }
 
+        printf("task_light_controller.c: os config loaded? %d\r\n", configLoaded);
+
         if (configLoaded) {
             // Verarbeite die Lichtzeitpläne
             if (scheduleIndex < growConfig.ledScheduleCount) {
@@ -99,12 +102,14 @@ void StartLightTask(void *argument)
                         // Licht einschalten
                         printf("task_light_control.c: Turning light ON (Schedule %d, Repetition %d)\r\n", scheduleIndex, repetitionIndex);
                         UpdateLightControllerState(100);
+                        ControlLight(100);
                         lightOn = true;
                         delayTime = schedule.durationOn * 1000; // in Millisekunden
                     } else {
                         // Licht ausschalten
                         printf("task_light_control.c: Turning light OFF (Schedule %d, Repetition %d)\r\n", scheduleIndex, repetitionIndex);
                         UpdateLightControllerState(0);
+                        ControlLight(0);
                         lightOn = false;
                         delayTime = schedule.durationOff * 1000; // in Millisekunden
 
@@ -122,10 +127,11 @@ void StartLightTask(void *argument)
                 // scheduleIndex = 0;
                 // repetitionIndex = 0;
                 configLoaded = false; // Oder warte auf neue Konfiguration
+                finished = true;
             }
         } else {
             // Versuche, die Konfiguration erneut zu laden
-            if (load_grow_cycle_config(&growConfig)) {
+            if (load_grow_cycle_config(&growConfig) && !finished) {
                 printf("task_light_control.c: Successfully loaded GrowCycle from EEPROM\r\n");
                 configLoaded = true;
                 scheduleIndex = 0;
@@ -138,14 +144,15 @@ void StartLightTask(void *argument)
         }
 
         // Wartezeit entsprechend einstellen
-        printf("task_light_control.c: current delay time: %d\r\n", delayTime);
+        printf("task_light_control.c: current delay time: %ld\r\n", delayTime);
         if (delayTime > 0) {
-            osDelay(delayTime);
+            //osDelay(delayTime);
             vTaskDelay(delayTime / portTICK_PERIOD_MS);
             delayTime = 0;
         } else {
             // Wenn keine Verzögerung erforderlich ist, eine kleine Pause einlegen, um nicht die CPU zu belasten
-            osDelay(100);
+            //osDelay(100);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
         }
     }
 }
