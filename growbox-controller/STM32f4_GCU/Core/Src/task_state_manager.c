@@ -6,17 +6,16 @@
 #include "schedules.h"
 #include <stdio.h>
 #include "uart_redirect.h"
+#include "controller_state.h"
+#include "main.h"
+#include "globals.h"
+
 
 /* Beispieladressen im EEPROM */
 #define EEPROM_GROW_CYCLE_CONFIG_ADDR      0x0100  // Adresse für GrowCycleConfig
 #define EEPROM_GROW_CYCLE_START_TIME_ADDR  0x0200  // Adresse für Startzeit des Grow Cycles
 
-/**
- * Speichert die GrowCycle-Konfiguration im EEPROM.
- *
- * @param config Zeiger auf die GrowCycleConfig-Struktur, die gespeichert werden soll.
- * @return true bei Erfolg, false bei Fehler.
- */
+
 bool save_grow_cycle_config(GrowCycleConfig *config) {
     if (config == NULL) {
         printf("task_state_manager.c: save_grow_cycle_config - Invalid config pointer\r\n");
@@ -48,7 +47,7 @@ bool save_grow_cycle_config(GrowCycleConfig *config) {
 
     // Überprüfe die Signatur
     if (readBackConfig.signature != GROW_CYCLE_CONFIG_SIGNATURE) {
-        printf("task_state_manager.c: Invalid signature in read-back data: expected 0x%08X, got 0x%08X\r\n",
+        printf("task_state_manager.c: Invalid signature in read-back data: expected 0x%08X, got 0x%08lX\r\n",
                GROW_CYCLE_CONFIG_SIGNATURE, readBackConfig.signature);
         return false;
     }
@@ -62,6 +61,17 @@ bool save_grow_cycle_config(GrowCycleConfig *config) {
         printf("task_state_manager.c: Verified that saved and read-back GrowCycleConfig are identical\r\n");
     }
 
+    printf("task_state_manager.c: Set flag that new GrowCycle is available\r\n");
+
+    // Konfiguration in die globale Variable kopieren
+    osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+    memcpy(&gGrowCycleConfig, config, sizeof(GrowCycleConfig));
+    osMutexRelease(gGrowCycleConfigMutexHandle);
+
+    // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+
+
     printf("task_state_manager.c: Size of GrowCycleConfig: %lu bytes\r\n", (unsigned long)sizeof(GrowCycleConfig));
 
 
@@ -69,12 +79,7 @@ bool save_grow_cycle_config(GrowCycleConfig *config) {
 }
 
 
-/**
- * Lädt die GrowCycle-Konfiguration aus dem EEPROM.
- *
- * @param config Zeiger auf die GrowCycleConfig-Struktur, in die die Daten geladen werden sollen.
- * @return true bei Erfolg, false bei Fehler.
- */
+
 bool load_grow_cycle_config(GrowCycleConfig *config) {
     if (config == NULL) {
         printf("task_state_manager.c: load_grow_cycle_config - Invalid config pointer\r\n");
@@ -94,8 +99,7 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
 
     // Debug-Ausgaben des geladenen Konfigurationsinhalts
     printf("task_state_manager.c: GrowCycleConfig loaded successfully\r\n");
-    printf("task_state_manager.c: totalGrowTime: %lu\r\n", (unsigned long)config->totalGrowTime);
-    printf("task_state_manager.c: startFromHere: %d\r\n", config->startFromHere);
+    printf("task_state_manager.c: startFromHere: %ld\r\n", config->startGrowTime);
     printf("task_state_manager.c: LED Schedule Count: %d\r\n", config->ledScheduleCount);
 
     for (uint8_t i = 0; i < config->ledScheduleCount; i++) {
@@ -110,21 +114,27 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
 
     for (uint8_t i = 0; i < config->wateringScheduleCount; i++) {
         WateringSchedule *schedule = &config->wateringSchedules[i];
-        printf("task_state_manager.c: Watering Schedule %d: status1=%s, duration1=%lu s, status2=%s, duration2=%lu s, waterRepetitions=%d\r\n",
-               i, schedule->status1, (unsigned long)schedule->duration1, schedule->status2, (unsigned long)schedule->duration2, schedule->waterRepetitions);
+        printf("task_state_manager.c: Watering Schedule %d: duration_full=%lu s, duration_empty=%lu s, repetition=%d\r\n",
+               i, (unsigned long)schedule->duration_full, (unsigned long)schedule->duration_empty, schedule->repetition);
     }
+
+
+    printf("task_state_manager.c: Set flag that new GrowCycle is available\r\n");
+
+    // Konfiguration in die globale Variable kopieren
+    osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+    memcpy(&gGrowCycleConfig, config, sizeof(GrowCycleConfig));
+    osMutexRelease(gGrowCycleConfigMutexHandle);
+
+    // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
 
 
 
     return true;
 }
 
-/**
- * Speichert die Startzeit des Grow Cycles im EEPROM.
- *
- * @param time DS3231_Time-Struktur, die die Startzeit enthält.
- * @return true bei Erfolg, false bei Fehler.
- */
+
 bool save_grow_cycle_start_time(DS3231_Time time) {
     printf("task_state_manager.c: Saving GrowCycle start time to EEPROM at address 0x%04X\r\n", EEPROM_GROW_CYCLE_START_TIME_ADDR);
 

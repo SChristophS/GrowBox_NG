@@ -2,8 +2,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "stm32f4xx_hal.h"
-
-
+#include "uart_redirect.h"
+#include <stdio.h>
 
 
 extern I2C_HandleTypeDef hi2c2;

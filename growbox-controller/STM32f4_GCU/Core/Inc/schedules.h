@@ -6,9 +6,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// Definiere maximal mögliche Pläne
 #define MAX_LED_SCHEDULES 10
 #define MAX_WATERING_SCHEDULES 10
-/* Weitere MAX_* Definitionen für andere Zeitpläne */
+
+#define GROW_CYCLE_CONFIG_SIGNATURE 0xDEADBEEF
 
 typedef struct __attribute__((packed)) {
     uint32_t durationOn;
@@ -16,29 +18,24 @@ typedef struct __attribute__((packed)) {
     uint8_t repetition;
 } LedSchedule;
 
-
 typedef struct __attribute__((packed)) {
-    char status1[10];
-    uint32_t duration1;
-    char status2[10];
-    uint32_t duration2;
-    uint8_t waterRepetitions;
+    uint32_t duration_full;
+    uint32_t duration_empty;
+    uint8_t repetition;
 } WateringSchedule;
 
-#define GROW_CYCLE_CONFIG_SIGNATURE 0xDEADBEEF
 
-
-
-/* Ähnliche Strukturen für temperatureTargets, humidityTargets, airFilterSchedules */
 
 typedef struct __attribute__((packed)) {
     uint32_t signature;
-    uint32_t totalGrowTime;
-    uint8_t startFromHere;
+    uint32_t startGrowTime;
     uint8_t ledScheduleCount;
     LedSchedule ledSchedules[MAX_LED_SCHEDULES];
     uint8_t wateringScheduleCount;
     WateringSchedule wateringSchedules[MAX_WATERING_SCHEDULES];
 } GrowCycleConfig;
+
+
+
 
 #endif /* SCHEDULES_H */

@@ -20,7 +20,10 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdbool.h>
+
+
 
 /* Netzwerk-Einstellungen */
 #define MY_IP          {192, 168, 178, 100}
@@ -48,6 +51,7 @@ bool websocket_handshake(uint8_t sock);
 void process_websocket_messages(uint8_t sock);
 void send_websocket_message(uint8_t sock, MessageForWebSocket *message);
 void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected);
+void synchronize_rtc(const char *iso8601_time);
 
 /* Globale Variablen */
 uint8_t gDATABUF[MAX_BUFFER_SIZE];
@@ -442,13 +446,13 @@ void parse_new_grow_cycle(cJSON *root)
     memset(&newConfig, 0, sizeof(GrowCycleConfig));
 
     /* startGrowTime */
-    cJSON *startGrowTime = cJSON_GetObjectItem(value, "startGrowTime");
-    if (startGrowTime != NULL && cJSON_IsString(startGrowTime)) {
-        printf("task_network.c: startGrowTime: %s\r\n", startGrowTime->valuestring);
-        synchronize_rtc(startGrowTime->valuestring);
-    } else {
-        printf("task_network.c: startGrowTime not found or invalid\r\n");
-    }
+    //cJSON *startGrowTime = cJSON_GetObjectItem(value, "startGrowTime");
+    //if (startGrowTime != NULL && cJSON_IsString(startGrowTime)) {
+        //printf("task_network.c: startGrowTime: %s\r\n", startGrowTime->valuestring);
+        //synchronize_rtc(startGrowTime->valuestring);
+    //} else {
+    //    printf("task_network.c: startGrowTime not found or invalid\r\n");
+    //}
 
     /* ledSchedules */
     cJSON *ledSchedules = cJSON_GetObjectItem(value, "ledSchedules");
@@ -511,21 +515,20 @@ void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config)
     for (int i = 0; i < scheduleCount && i < MAX_WATERING_SCHEDULES; i++) {
         cJSON *schedule = cJSON_GetArrayItem(wateringSchedules, i);
         if (schedule != NULL) {
-            cJSON *status1 = cJSON_GetObjectItem(schedule, "status1");
-            cJSON *duration1 = cJSON_GetObjectItem(schedule, "duration1");
-            cJSON *status2 = cJSON_GetObjectItem(schedule, "status2");
-            cJSON *duration2 = cJSON_GetObjectItem(schedule, "duration2");
-            cJSON *waterRepetitions = cJSON_GetObjectItem(schedule, "waterRepetitions");
+            cJSON *duration_full = cJSON_GetObjectItem(schedule, "duration_full");
+            cJSON *duration_empty = cJSON_GetObjectItem(schedule, "duration_empty");
+            cJSON *repetition = cJSON_GetObjectItem(schedule, "repetition");
 
-            if (status1 && duration1 && status2 && duration2 && waterRepetitions) {
-                // Hier solltest du die entsprechenden Felder in deiner Struktur zuweisen
-                // Beispiel:
-                strncpy(config->wateringSchedules[i].status1, status1->valuestring, sizeof(config->wateringSchedules[i].status1)-1);
-                config->wateringSchedules[i].status1[sizeof(config->wateringSchedules[i].status1)-1] = '\0';
-                config->wateringSchedules[i].duration1 = duration1->valueint;
-                // ... und so weiter
+            if (duration_full && duration_empty && repetition) {
+                // Werte zuweisen
+                config->wateringSchedules[i].duration_full = duration_full->valueint;
+                config->wateringSchedules[i].duration_empty = duration_empty->valueint;
+                config->wateringSchedules[i].repetition = repetition->valueint;
                 config->wateringScheduleCount++;
-                printf("task_network.c: Added watering schedule %d\r\n", i);
+                printf("task_network.c: Added watering schedule %d: duration_full=%lu, duration_empty=%lu, repetition=%d\r\n",
+                       i, (unsigned long)config->wateringSchedules[i].duration_full, (unsigned long)config->wateringSchedules[i].duration_empty,
+                       config->wateringSchedules[i].repetition);
+
             } else {
                 printf("task_network.c: Incomplete wateringSchedule data\r\n");
             }
@@ -534,13 +537,33 @@ void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config)
 }
 
 
+bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time)
+{
+    int year, month, day, hour, min, sec;
+    if (sscanf(datetime_str, "%4d-%2d-%2dT%2d:%2d:%2d",
+               &year, &month, &day, &hour, &min, &sec) != 6)
+    {
+        return false;
+    }
+
+    tm_time->tm_year = year - 1900; // `tm_year` ist die Anzahl der Jahre seit 1900
+    tm_time->tm_mon = month - 1;    // `tm_mon` ist 0-basiert (0 = Januar)
+    tm_time->tm_mday = day;
+    tm_time->tm_hour = hour;
+    tm_time->tm_min = min;
+    tm_time->tm_sec = sec;
+    tm_time->tm_isdst = -1; // Daylight Saving Time unbekannt
+
+    return true;
+}
+
 void synchronize_rtc(const char *iso8601_time)
 {
     struct tm tm_time;
     memset(&tm_time, 0, sizeof(struct tm));
 
-    if (strptime(iso8601_time, "%Y-%m-%dT%H:%M:%S", &tm_time) == NULL) {
-        printf("task_network.c: Failed to parse current_time\r\n");
+    if (!parse_iso8601_datetime(iso8601_time, &tm_time)) {
+        printf("task_network.c: Failed to parse current_time\n");
         return;
     }
 

@@ -1,113 +1,221 @@
-#include "cmsis_os.h"
+/* task_water_controller.c */
+
+#include "task_water_controller.h"
 #include "controller_state.h"
+#include "cmsis_os.h"
 #include "uart_redirect.h"
+#include "hardware.h"
+#include "task_state_manager.h"
+#include "schedules.h"
 #include <stdio.h>
-#include "main.h"
+#include "globals.h"
+#include "task_hardware.h" // Für HardwareCommand und HardwareCommandType
 
 
 
-void UpdateWaterControllerState(bool wasserbeckenZustand, bool pumpeZulauf, bool pumpeAblauf, bool sensorVoll, bool sensorLeer) {
-    osMutexAcquire(gControllerStateMutex, osWaitForever);
+void ControlPump(bool enable, uint8_t pumpId) {
+    printf("task_water_controller.c: Sending pump control command to Hardware Task for PumpID %i\r\n", pumpId);
 
-    if (gControllerState.wasserbeckenZustand != wasserbeckenZustand) {
-        gControllerState.wasserbeckenZustand = wasserbeckenZustand;
-        osEventFlagsSet(gControllerEventGroup, WATER_STATE_CHANGED_BIT);
-    }
-    if (gControllerState.pumpeZulauf != pumpeZulauf) {
-        gControllerState.pumpeZulauf = pumpeZulauf;
-        osEventFlagsSet(gControllerEventGroup, PUMP_ZULAUF_STATE_CHANGED_BIT);
-    }
-    if (gControllerState.pumpeAblauf != pumpeAblauf) {
-        gControllerState.pumpeAblauf = pumpeAblauf;
-        osEventFlagsSet(gControllerEventGroup, PUMP_ABLAUF_STATE_CHANGED_BIT);
-    }
-    if (gControllerState.sensorVoll != sensorVoll) {
-        gControllerState.sensorVoll = sensorVoll;
-        osEventFlagsSet(gControllerEventGroup, SENSOR_VOLL_STATE_CHANGED_BIT);
-    }
-    if (gControllerState.sensorLeer != sensorLeer) {
-        gControllerState.sensorLeer = sensorLeer;
-        osEventFlagsSet(gControllerEventGroup, SENSOR_LEER_STATE_CHANGED_BIT);
-    }
+    // Erstelle Hardwarebefehl
+    HardwareCommand cmd;
+    cmd.commandType = COMMAND_CONTROL_PUMP;
+    cmd.deviceId = pumpId;
+    cmd.enable = enable;
+    printf("task_water_controller.c: Size of HardwareCommand: %lu bytes\r\n", (unsigned long)sizeof(HardwareCommand));
 
-    osMutexRelease(gControllerStateMutex);
-}
+    printf("task_water_controller.c: cmd.commandType %i\r\n", cmd.commandType);
+    printf("task_water_controller.c: cmd.deviceId %i\r\n", cmd.deviceId);
+    printf("task_water_controller.c: cmd.enable %s \r\n", cmd.enable ? "true" : "false");
 
-void ControlPump(bool enable, GPIO_TypeDef* enablePort, uint16_t enablePin, GPIO_TypeDef* in1Port, uint16_t in1Pin, GPIO_TypeDef* in2Port, uint16_t in2Pin) {
-    if (enable) {
-        HAL_GPIO_WritePin(in1Port, in1Pin, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(in2Port, in2Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(enablePort, enablePin, GPIO_PIN_SET);
-    } else {
-        HAL_GPIO_WritePin(enablePort, enablePin, GPIO_PIN_RESET);
-    }
+    // Sende Befehl an Hardware-Task
+    osMessageQueuePut(xHardwareQueueHandle, &cmd, 0, 0);
 }
 
 void StartWaterControllerTask(void *argument)
 {
-    /* USER CODE BEGIN startWaterControllerTask */
-    bool wasserbeckenZustand;
-    GPIO_PinState stateSensorOben, stateSensorUnten;
+    printf("task_water_controller.c: Starting Water Controller Task\r\n");
+
+    GrowCycleConfig growConfig;
+    bool configLoaded = false;
+    bool finished = false;
+    uint8_t phase = 1;
+    uint32_t startTime = 0;
+
+    // Warte auf das Event-Flag, das anzeigt, dass die Konfiguration verfügbar ist
+    printf("task_water_controller.c: Waiting for GrowCycleConfig to become available...\r\n");
+    uint32_t flags = osEventFlagsWait(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE, osFlagsWaitAny, osWaitForever);
+    printf("task_water_controller.c: waiting done\r\n");
+
+
+    // Lade die Konfiguration
+    if (flags & NEW_GROW_CYCLE_CONFIG_AVAILABLE) {
+        if (load_grow_cycle_config(&growConfig)) {
+            printf("task_water_controller.c: Successfully loaded GrowCycle from EEPROM\r\n");
+            configLoaded = true;
+        } else {
+            printf("task_water_controller.c: Failed to load grow cycle config\r\n");
+        }
+    } else {
+        printf("task_water_controller.c: Failed to receive new grow cycle config available flag\r\n");
+    }
 
 
 
-    /* Infinite loop */
-    for(;;)
+    uint8_t scheduleIndex = 0;
+    uint8_t repetitionIndex = 0;
+    bool pumping = false;
+    uint32_t delayTime = 0;
+
+    for (;;)
     {
-        stateSensorOben = HAL_GPIO_ReadPin(WATER_OBEN_GPIO_Port, WATER_OBEN_Pin);
-        stateSensorUnten = HAL_GPIO_ReadPin(WATER_UNTEN_GPIO_Port, WATER_UNTEN_Pin);
-        //printf("task_water_controller.c: Sensor Oben = %s, Unten = %s\r\n", stateSensorOben == GPIO_PIN_SET ? "HIGH" : "LOW", stateSensorUnten == GPIO_PIN_SET ? "HIGH" : "LOW");
+        // Warte auf Sensorwert-Änderungen
+        uint32_t flags = osEventFlagsWait(gControllerEventGroupHandle, WATER_SENSOR_VALUES_CHANGED_BIT, osFlagsWaitAny, 100);
 
-        // Warte auf Nachrichten in der WaterController-Queue, mit Timeout
-        if (osMessageQueueGet(xWaterControllerQueueHandle, &wasserbeckenZustand, NULL, 100) == osOK) {
-            // Nachricht drucken
-            printf("task_water_controller.c:\tNeuer Wasserzustand: %s\r\n", wasserbeckenZustand ? "voll" : "leer");
+        if (flags & WATER_SENSOR_VALUES_CHANGED_BIT) {
+            // Sensorwerte lesen
+            osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+            bool sensorOben = gControllerState.sensorOben;
+            bool sensorUnten = gControllerState.sensorUnten;
+            osMutexRelease(gControllerStateMutexHandle);
 
-            // Update Controller State
-            UpdateWaterControllerState(wasserbeckenZustand, gControllerState.pumpeZulauf, gControllerState.pumpeAblauf, gControllerState.sensorVoll, gControllerState.sensorLeer);
+            printf("task_water_controller.c: New sensor values! SensorOben=%s, SensorUnten=%s\r\n",
+                   sensorOben ? "true" : "false", sensorUnten ? "true" : "false");
         }
 
+        if (configLoaded) {
+            // Verarbeite die Bewässerungszeitpläne
+            if (scheduleIndex < growConfig.wateringScheduleCount) {
+                WateringSchedule schedule = growConfig.wateringSchedules[scheduleIndex];
 
-        // Check and control the water tank state
-        if (gControllerState.wasserbeckenZustand) {
-            // Soll-Zustand: Wassertank voll
-        	//printf("Soll-Zustand: Wassertank voll\r\n");
+                if (repetitionIndex < schedule.repetition) {
+                    if (!pumping) {
+                        // Start der Bewässerung für die aktuelle Phase
+                        printf("task_water_controller.c: Starting watering (Schedule %d, Repetition %d, Phase %d)\r\n", scheduleIndex, repetitionIndex, phase);
 
-            if (stateSensorOben) {
-            	//printf("Sensor oben meldet WASSER ERKANNT\r\n");
+                        if (phase == 1) {
+                            // Phase 1: Zustand "voll" erreichen
+                            ControlPump(true, PUMP_ZULAUF);
+                            ControlPump(false, PUMP_ABLAUF);
+                            delayTime = schedule.duration_full * 1000; // in Millisekunden
+                        } else if (phase == 2) {
+                            // Phase 2: Zustand "leer" erreichen
+                            ControlPump(false, PUMP_ZULAUF);
+                            ControlPump(true, PUMP_ABLAUF);
+                            delayTime = schedule.duration_empty * 1000; // in Millisekunden
+                        }
 
-            	// Stop pump zulauf
-            	ControlPump(false, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
-            	// stop pump ablauf
-            	ControlPump(false, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
+                        pumping = true;
+                        startTime = osKernelGetTickCount();
+                    } else {
+                        // Überprüfe, ob das Ziel erreicht wurde oder die Zeit abgelaufen ist
+                        uint32_t currentTime = osKernelGetTickCount();
+                        if ((currentTime - startTime) >= delayTime) {
+                            // Maximale Dauer erreicht, Pumpen stoppen
+                            ControlPump(false, PUMP_ZULAUF);
+                            ControlPump(false, PUMP_ABLAUF);
+                            pumping = false;
 
+                            if (phase == 1) {
+                                phase = 2; // Wechsle zu Phase 2
+                            } else {
+                                // Beide Phasen abgeschlossen
+                                repetitionIndex++;
+                                phase = 1; // Zurück zu Phase 1
+                            }
+                        } else {
+                            // Überprüfe Sensorwerte
+                            osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+                            bool sensorOben = gControllerState.sensorOben;
+                            bool sensorUnten = gControllerState.sensorUnten;
+                            osMutexRelease(gControllerStateMutexHandle);
+
+                            bool targetAchieved = false;
+
+                            if (phase == 1) {
+                                // Ziel ist Zustand "voll"
+                                if (sensorOben) {
+                                    targetAchieved = true;
+                                }
+                            } else if (phase == 2) {
+                                // Ziel ist Zustand "leer"
+                                if (!sensorOben && !sensorUnten) {
+                                    targetAchieved = true;
+                                }
+                            }
+
+                            if (targetAchieved) {
+                                // Pumpen stoppen
+                                ControlPump(false, PUMP_ZULAUF);
+                                ControlPump(false, PUMP_ABLAUF);
+                                pumping = false;
+
+                                if (phase == 1) {
+                                    phase = 2; // Wechsle zu Phase 2
+                                } else {
+                                    // Beide Phasen abgeschlossen
+                                    repetitionIndex++;
+                                    phase = 1; // Zurück zu Phase 1
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Nächster Zeitplan
+                    scheduleIndex++;
+                    repetitionIndex = 0;
+                    phase = 1;
+                }
             } else {
-            	//printf("Sensor oben meldet KEIN WASSER ERKANNT\r\n");
-                // Start Pumping zulauf
-            	ControlPump(true, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
-            	// stop pumpe ablauf
-            	ControlPump(false, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
+                // Alle Zeitpläne abgeschlossen
+                printf("task_water_controller.c: All watering schedules completed\n");
+                ControlPump(false, PUMP_ZULAUF);
+                ControlPump(false, PUMP_ABLAUF);
+                configLoaded = false; // Warte auf neue Konfiguration
+                finished = true;
             }
         } else {
-        	//printf("Soll-Zustand: Wassertank leer\r\n");
+            if (finished) {
+                // Warte auf neue Konfiguration
+                printf("task_water_controller.c: Waiting for new configuration...\n");
+                uint32_t newConfigFlag = osEventFlagsWait(gControllerEventGroupHandle,
+                		NEW_GROW_CYCLE_CONFIG_AVAILABLE,
+                                                          osFlagsWaitAny, osWaitForever);
 
-            // Soll-Zustand: Wassertank leer
-            if (stateSensorUnten) {
-            	//printf("Sensor UNTEN meldet WASSER ERKANNT\r\n");
-                // Start Pumping Ablauf
-                ControlPump(true, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
-                // Stop pump zulauf
-				ControlPump(false, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
+                if (newConfigFlag & NEW_GROW_CYCLE_CONFIG_AVAILABLE) {
+                    // Versuche, die Konfiguration zu laden
+                    if (load_grow_cycle_config(&growConfig)) {
+                        printf("task_water_controller.c: Successfully loaded new GrowCycle from EEPROM\n");
+                        configLoaded = true;
+                        scheduleIndex = 0;
+                        repetitionIndex = 0;
+                        pumping = false;
+                        finished = false;
+                        phase = 1;
+                    } else {
+                        printf("task_water_controller.c: Failed to load new grow cycle config\n");
+                        // Hier kannst du entscheiden, was zu tun ist
+                    }
+
+                    // Lösche das Event-Flag
+                    osEventFlagsClear(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+                }
             } else {
-            	//printf("Sensor UNTEN meldet kein WASSER ERKANNT\r\n");
-                // Stop Pumping Zulauf
-            	ControlPump(false, PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, PUMP1_IN1_GPIO_Port, PUMP1_IN1_Pin, PUMP1_IN2_GPIO_Port, PUMP1_IN2_Pin);
-            	// Stop pump zulauf
-				ControlPump(false, PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, PUMP2_IN1_GPIO_Port, PUMP2_IN1_Pin, PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin);
+                // Erster Ladeversuch beim Start oder nach fehlgeschlagenem Laden
+                if (load_grow_cycle_config(&growConfig)) {
+                    printf("task_water_controller.c: Successfully loaded GrowCycle from EEPROM\n");
+                    configLoaded = true;
+                    scheduleIndex = 0;
+                    repetitionIndex = 0;
+                    pumping = false;
+                    phase = 1;
+                } else {
+                    printf("task_water_controller.c: No grow cycle config found. Waiting for new configuration...\n");
+                    finished = true; // Warte auf neue Konfiguration
+                }
             }
         }
 
-        osDelay(1); // Kleine Verzögerung, um CPU-Last zu reduzieren
+        // Wartezeit entsprechend einstellen
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
-    /* USER CODE END startWaterControllerTask */
 }
