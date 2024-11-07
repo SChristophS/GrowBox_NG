@@ -10,30 +10,26 @@
             "startGrowTime": "2024-12-31T23:59:59",
             "ledSchedules": [
                 {
-                    "durationOn": 30,
-                    "durationOff": 30,
+                    "durationOn": 1,
+                    "durationOff": 10000000,
                     "repetition": 10
                 },
                 {
-                    "durationOn": 10,
-                    "durationOff": 10,
-                    "repetition": 5
+                    "durationOn": 2,
+                    "durationOff": 2,
+                    "repetition": 1
                 }
             ],
             "wateringSchedules": [
                 {
-                    "status1": "full",
-                    "duration1": 300,
-                    "status2": "empty",
-                    "duration2": 300,
-                    "waterRepetitions": 1
+                    "duration_full": 0,
+                    "duration_empty": 200000,
+                    "repetition": 5
                 },
                 {
-                    "status1": "full",
-                    "duration1": 60,
-                    "status2": "empty",
-                    "duration2": 60,
-                    "waterRepetitions": 1
+                    "duration_full": 5,
+                    "duration_empty": 5,
+                    "repetition": 2
                 }
             ],
             "temperatureTargets": [
