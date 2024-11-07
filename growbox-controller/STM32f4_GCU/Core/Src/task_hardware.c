@@ -36,8 +36,8 @@ void StartHardwareTask(void *argument)
                         EnablePump(cmd.deviceId);
                     } else {
                         // Pumpe ausschalten
-                        //DisablePump(cmd.deviceId);
-                        EnablePump(1);
+                    	printf("task_hardware.c: deactivate pump with device %d\r\n", cmd.deviceId);
+                        DisablePump(cmd.deviceId);
                     }
                     break;
 

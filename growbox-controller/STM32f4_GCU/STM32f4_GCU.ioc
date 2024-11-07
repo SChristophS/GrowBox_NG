@@ -2,12 +2,12 @@
 CAD.formats=
 CAD.pinconfig=
 CAD.provider=
-FREERTOS.Events01=gControllerEventGroup,Dynamic,NULL
+FREERTOS.Events01=gControllerEventGroup,Static,gControllerEventGroupControlBlock
 FREERTOS.FootprintOK=true
 FREERTOS.IPParameters=Tasks01,configUSE_NEWLIB_REENTRANT,FootprintOK,Queues01,Mutexes01,Events01,configCHECK_FOR_STACK_OVERFLOW
-FREERTOS.Mutexes01=gControllerStateMutex,Dynamic,NULL,Depleted;gGrowCycleConfigMutex,Dynamic,NULL,Depleted
-FREERTOS.Queues01=xWaterControllerQueue,1,uint8_t,0,Dynamic,NULL,NULL;xLightControllerQueue,1,uint8_t,0,Dynamic,NULL,NULL;xWebSocketQueue,1,6,1,Dynamic,NULL,NULL;xHardwareQueue,1,4,1,Dynamic,NULL,NULL
-FREERTOS.Tasks01=AliveTask,24,256,StartAliveTask,Default,NULL,Dynamic,NULL,NULL;NetworkTask,32,1024,StartNetworkTask,Default,NULL,Dynamic,NULL,NULL;WaterController,25,512,StartWaterControllerTask,Default,NULL,Dynamic,NULL,NULL;LightTask,26,512,StartLightTask,Default,NULL,Dynamic,NULL,NULL;SensorTask,8,256,StartSensorTask,Default,NULL,Dynamic,NULL,NULL;HardwareTask,32,512,StartHardwareTask,Default,NULL,Dynamic,NULL,NULL
+FREERTOS.Mutexes01=gControllerStateMutex,Static,gControllerStateMutexControlBlock,Depleted;gGrowCycleConfigMutex,Static,gGrowCycleConfigMutexControlBlock,Depleted
+FREERTOS.Queues01=xWaterControllerQueue,1,uint8_t,0,Static,xWaterControllerQueueBuffer,xWaterControllerQueueControlBlock;xLightControllerQueue,1,uint8_t,0,Static,xLightControllerQueueBuffer,xLightControllerQueueControlBlock;xWebSocketQueue,1,6,1,Dynamic,NULL,NULL;xHardwareQueue,1,4,1,Static,xHardwareQueueBuffer,xHardwareQueueControlBlock
+FREERTOS.Tasks01=AliveTask,24,128,StartAliveTask,Default,NULL,Static,AliveTaskBuffer,AliveTaskControlBlock;NetworkTask,32,1024,StartNetworkTask,Default,NULL,Dynamic,NULL,NULL;WaterController,25,512,StartWaterControllerTask,Default,NULL,Static,WaterControllerBuffer,WaterControllerControlBlock;LightTask,26,512,StartLightTask,Default,NULL,Static,LightTaskBuffer,LightTaskControlBlock;SensorTask,8,256,StartSensorTask,Default,NULL,Static,SensorTaskBuffer,SensorTaskControlBlock;HardwareTask,32,512,StartHardwareTask,Default,NULL,Static,HardwareTaskBuffer,HardwareTaskControlBlock
 FREERTOS.configCHECK_FOR_STACK_OVERFLOW=1
 FREERTOS.configUSE_NEWLIB_REENTRANT=1
 File.Version=6

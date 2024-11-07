@@ -188,7 +188,6 @@ void network_init(void)
            gWIZNETINFO.gw[0], gWIZNETINFO.gw[1], gWIZNETINFO.gw[2], gWIZNETINFO.gw[3]);
 }
 
-
 bool websocket_handshake(uint8_t sock)
 {
     printf("task_network.c: Performing WebSocket handshake\r\n");
@@ -535,7 +534,6 @@ void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config)
         }
     }
 }
-
 
 bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time)
 {

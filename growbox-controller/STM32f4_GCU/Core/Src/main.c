@@ -52,6 +52,10 @@
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
+typedef StaticTask_t osStaticThreadDef_t;
+typedef StaticQueue_t osStaticMessageQDef_t;
+typedef StaticSemaphore_t osStaticMutexDef_t;
+typedef StaticEventGroup_t osStaticEventGroupDef_t;
 /* USER CODE BEGIN PTD */
 
 
@@ -83,9 +87,14 @@ UART_HandleTypeDef huart2;
 
 /* Definitions for AliveTask */
 osThreadId_t AliveTaskHandle;
+uint32_t AliveTaskBuffer[ 128 ];
+osStaticThreadDef_t AliveTaskControlBlock;
 const osThreadAttr_t AliveTask_attributes = {
   .name = "AliveTask",
-  .stack_size = 256 * 4,
+  .cb_mem = &AliveTaskControlBlock,
+  .cb_size = sizeof(AliveTaskControlBlock),
+  .stack_mem = &AliveTaskBuffer[0],
+  .stack_size = sizeof(AliveTaskBuffer),
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for NetworkTask */
@@ -97,41 +106,73 @@ const osThreadAttr_t NetworkTask_attributes = {
 };
 /* Definitions for WaterController */
 osThreadId_t WaterControllerHandle;
+uint32_t WaterControllerBuffer[ 512 ];
+osStaticThreadDef_t WaterControllerControlBlock;
 const osThreadAttr_t WaterController_attributes = {
   .name = "WaterController",
-  .stack_size = 512 * 4,
+  .cb_mem = &WaterControllerControlBlock,
+  .cb_size = sizeof(WaterControllerControlBlock),
+  .stack_mem = &WaterControllerBuffer[0],
+  .stack_size = sizeof(WaterControllerBuffer),
   .priority = (osPriority_t) osPriorityNormal1,
 };
 /* Definitions for LightTask */
 osThreadId_t LightTaskHandle;
+uint32_t LightTaskBuffer[ 512 ];
+osStaticThreadDef_t LightTaskControlBlock;
 const osThreadAttr_t LightTask_attributes = {
   .name = "LightTask",
-  .stack_size = 512 * 4,
+  .cb_mem = &LightTaskControlBlock,
+  .cb_size = sizeof(LightTaskControlBlock),
+  .stack_mem = &LightTaskBuffer[0],
+  .stack_size = sizeof(LightTaskBuffer),
   .priority = (osPriority_t) osPriorityNormal2,
 };
 /* Definitions for SensorTask */
 osThreadId_t SensorTaskHandle;
+uint32_t SensorTaskBuffer[ 256 ];
+osStaticThreadDef_t SensorTaskControlBlock;
 const osThreadAttr_t SensorTask_attributes = {
   .name = "SensorTask",
-  .stack_size = 256 * 4,
+  .cb_mem = &SensorTaskControlBlock,
+  .cb_size = sizeof(SensorTaskControlBlock),
+  .stack_mem = &SensorTaskBuffer[0],
+  .stack_size = sizeof(SensorTaskBuffer),
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for HardwareTask */
 osThreadId_t HardwareTaskHandle;
+uint32_t HardwareTaskBuffer[ 512 ];
+osStaticThreadDef_t HardwareTaskControlBlock;
 const osThreadAttr_t HardwareTask_attributes = {
   .name = "HardwareTask",
-  .stack_size = 512 * 4,
+  .cb_mem = &HardwareTaskControlBlock,
+  .cb_size = sizeof(HardwareTaskControlBlock),
+  .stack_mem = &HardwareTaskBuffer[0],
+  .stack_size = sizeof(HardwareTaskBuffer),
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for xWaterControllerQueue */
 osMessageQueueId_t xWaterControllerQueueHandle;
+uint8_t xWaterControllerQueueBuffer[ 1 * sizeof( uint8_t ) ];
+osStaticMessageQDef_t xWaterControllerQueueControlBlock;
 const osMessageQueueAttr_t xWaterControllerQueue_attributes = {
-  .name = "xWaterControllerQueue"
+  .name = "xWaterControllerQueue",
+  .cb_mem = &xWaterControllerQueueControlBlock,
+  .cb_size = sizeof(xWaterControllerQueueControlBlock),
+  .mq_mem = &xWaterControllerQueueBuffer,
+  .mq_size = sizeof(xWaterControllerQueueBuffer)
 };
 /* Definitions for xLightControllerQueue */
 osMessageQueueId_t xLightControllerQueueHandle;
+uint8_t xLightControllerQueueBuffer[ 1 * sizeof( uint8_t ) ];
+osStaticMessageQDef_t xLightControllerQueueControlBlock;
 const osMessageQueueAttr_t xLightControllerQueue_attributes = {
-  .name = "xLightControllerQueue"
+  .name = "xLightControllerQueue",
+  .cb_mem = &xLightControllerQueueControlBlock,
+  .cb_size = sizeof(xLightControllerQueueControlBlock),
+  .mq_mem = &xLightControllerQueueBuffer,
+  .mq_size = sizeof(xLightControllerQueueBuffer)
 };
 /* Definitions for xWebSocketQueue */
 osMessageQueueId_t xWebSocketQueueHandle;
@@ -140,23 +181,38 @@ const osMessageQueueAttr_t xWebSocketQueue_attributes = {
 };
 /* Definitions for xHardwareQueue */
 osMessageQueueId_t xHardwareQueueHandle;
+uint8_t xHardwareQueueBuffer[ 1 * 4 ];
+osStaticMessageQDef_t xHardwareQueueControlBlock;
 const osMessageQueueAttr_t xHardwareQueue_attributes = {
-  .name = "xHardwareQueue"
+  .name = "xHardwareQueue",
+  .cb_mem = &xHardwareQueueControlBlock,
+  .cb_size = sizeof(xHardwareQueueControlBlock),
+  .mq_mem = &xHardwareQueueBuffer,
+  .mq_size = sizeof(xHardwareQueueBuffer)
 };
 /* Definitions for gControllerStateMutex */
 osMutexId_t gControllerStateMutexHandle;
+osStaticMutexDef_t gControllerStateMutexControlBlock;
 const osMutexAttr_t gControllerStateMutex_attributes = {
-  .name = "gControllerStateMutex"
+  .name = "gControllerStateMutex",
+  .cb_mem = &gControllerStateMutexControlBlock,
+  .cb_size = sizeof(gControllerStateMutexControlBlock),
 };
 /* Definitions for gGrowCycleConfigMutex */
 osMutexId_t gGrowCycleConfigMutexHandle;
+osStaticMutexDef_t gGrowCycleConfigMutexControlBlock;
 const osMutexAttr_t gGrowCycleConfigMutex_attributes = {
-  .name = "gGrowCycleConfigMutex"
+  .name = "gGrowCycleConfigMutex",
+  .cb_mem = &gGrowCycleConfigMutexControlBlock,
+  .cb_size = sizeof(gGrowCycleConfigMutexControlBlock),
 };
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
+osStaticEventGroupDef_t gControllerEventGroupControlBlock;
 const osEventFlagsAttr_t gControllerEventGroup_attributes = {
-  .name = "gControllerEventGroup"
+  .name = "gControllerEventGroup",
+  .cb_mem = &gControllerEventGroupControlBlock,
+  .cb_size = sizeof(gControllerEventGroupControlBlock),
 };
 /* USER CODE BEGIN PV */
 
@@ -857,6 +913,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
 
 /**
   * @brief  Period elapsed callback in non blocking mode
