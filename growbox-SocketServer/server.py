@@ -33,7 +33,9 @@ def message_received(client, server, message):
         print(f"Client({client['id']}) said: {message}")
 
         try:
+            print("Try to load the message")
             message_data = json.loads(message)
+            print("message is loaded")
             
             # Handle all kind of register messages
             if message_data.get('message_type') == 'register':
