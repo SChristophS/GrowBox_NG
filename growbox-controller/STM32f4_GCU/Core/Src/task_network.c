@@ -44,6 +44,7 @@ void StartNetworkTask(void *argument);
 void network_init(void);
 void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size);
 void process_received_data(const char *json_payload);
+void parse_control_command(cJSON *root);
 void parse_new_grow_cycle(cJSON *root);
 void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config);
 void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config);
@@ -52,6 +53,13 @@ void process_websocket_messages(uint8_t sock);
 void send_websocket_message(uint8_t sock, MessageForWebSocket *message);
 void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected);
 void synchronize_rtc(const char *iso8601_time);
+void handle_water_command(const char *action, cJSON *value);
+void handle_system_command(const char *action, cJSON *value);
+uint32_t calculate_total_duration(GrowCycleConfig *config);
+void handle_light_command(const char *action, cJSON *value);
+void handle_pump_command(const char *action, int deviceId, cJSON *value);
+bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time);
+time_t ds3231_time_to_timestamp(DS3231_Time *time);
 
 /* Globale Variablen */
 uint8_t gDATABUF[MAX_BUFFER_SIZE];
@@ -68,6 +76,10 @@ wiz_NetInfo gWIZNETINFO = {
 void StartNetworkTask(void *argument)
 {
     printf("task_network.c: Starting Network Task\r\n");
+
+    printf("task_network.c: calling InitializeGrowCycleConfig\r\n");
+    InitializeGrowCycleConfig();
+
 
     /* Netzwerk initialisieren */
     network_init();
@@ -109,6 +121,7 @@ void StartNetworkTask(void *argument)
         osDelay(100);
     }
 }
+
 
 void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected)
 {
@@ -416,14 +429,66 @@ void process_received_data(const char *json_payload)
         synchronize_rtc(current_time->valuestring);
     }
 
+
     if (strcmp(message_type->valuestring, "newGrowCycle") == 0) {
         parse_new_grow_cycle(root);
+    } else if (strcmp(message_type->valuestring, "ControlCommand") == 0) {
+        parse_control_command(root);
     } else {
         printf("task_network.c: Unknown message_type: %s\r\n", message_type->valuestring);
     }
 
     cJSON_Delete(root);
 }
+
+void parse_control_command(cJSON *root)
+{
+    printf("task_network.c: Parsing ControlCommand\r\n");
+
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (payload == NULL) {
+        printf("task_network.c: No payload found in ControlCommand message\r\n");
+        return;
+    }
+
+    cJSON *commands = cJSON_GetObjectItem(payload, "commands");
+    if (commands == NULL || !cJSON_IsArray(commands)) {
+        printf("task_network.c: No commands array found in payload\r\n");
+        return;
+    }
+
+    int commandCount = cJSON_GetArraySize(commands);
+    for (int i = 0; i < commandCount; i++) {
+        cJSON *command = cJSON_GetArrayItem(commands, i);
+        if (command != NULL) {
+            cJSON *target = cJSON_GetObjectItem(command, "target");
+            cJSON *action = cJSON_GetObjectItem(command, "action");
+            cJSON *value = cJSON_GetObjectItem(command, "value");
+
+            if (target && action && value && cJSON_IsString(target) && cJSON_IsString(action)) {
+                if (strcmp(target->valuestring, "light") == 0) {
+                    handle_light_command(action->valuestring, value);
+                } else if (strcmp(target->valuestring, "pump") == 0) {
+                    cJSON *deviceId = cJSON_GetObjectItem(command, "deviceId");
+                    if (deviceId && cJSON_IsNumber(deviceId)) {
+                        handle_pump_command(action->valuestring, deviceId->valueint, value);
+                    } else {
+                        printf("task_network.c: pump command missing deviceId\r\n");
+                    }
+                } else if (strcmp(target->valuestring, "system") == 0) {
+                    handle_system_command(action->valuestring, value);
+                } else if (strcmp(target->valuestring, "water") == 0) {
+                    handle_water_command(action->valuestring, value);
+                } else {
+                    printf("task_network.c: Unknown target: %s\r\n", target->valuestring);
+                }
+            } else {
+                printf("task_network.c: Invalid command format\r\n");
+            }
+        }
+    }
+}
+
 
 void parse_new_grow_cycle(cJSON *root)
 {
@@ -445,13 +510,24 @@ void parse_new_grow_cycle(cJSON *root)
     memset(&newConfig, 0, sizeof(GrowCycleConfig));
 
     /* startGrowTime */
-    //cJSON *startGrowTime = cJSON_GetObjectItem(value, "startGrowTime");
-    //if (startGrowTime != NULL && cJSON_IsString(startGrowTime)) {
-        //printf("task_network.c: startGrowTime: %s\r\n", startGrowTime->valuestring);
-        //synchronize_rtc(startGrowTime->valuestring);
-    //} else {
-    //    printf("task_network.c: startGrowTime not found or invalid\r\n");
-    //}
+    cJSON *startGrowTime = cJSON_GetObjectItem(value, "startGrowTime");
+    if (startGrowTime != NULL && cJSON_IsString(startGrowTime)) {
+        printf("task_network.c: startGrowTime: %s\r\n", startGrowTime->valuestring);
+        strncpy(newConfig.startGrowTime, startGrowTime->valuestring, sizeof(newConfig.startGrowTime));
+    } else {
+        printf("task_network.c: startGrowTime not found or invalid\r\n");
+        return;
+    }
+
+    /* automaticMode */
+    cJSON *automaticMode = cJSON_GetObjectItem(value, "automaticMode");
+    if (automaticMode != NULL && cJSON_IsBool(automaticMode)) {
+        newConfig.automaticMode = cJSON_IsTrue(automaticMode);
+        printf("task_network.c: automaticMode: %s\r\n", newConfig.automaticMode ? "true" : "false");
+    } else {
+        printf("task_network.c: automaticMode not found or invalid, defaulting to false\r\n");
+        newConfig.automaticMode = false;
+    }
 
     /* ledSchedules */
     cJSON *ledSchedules = cJSON_GetObjectItem(value, "ledSchedules");
@@ -469,7 +545,37 @@ void parse_new_grow_cycle(cJSON *root)
         printf("task_network.c: wateringSchedules not found or invalid\r\n");
     }
 
-    /* Weitere Zeitpläne können ähnlich geparst werden */
+    // Gültigkeitsprüfung des GrowPlans
+    uint32_t totalDuration = calculate_total_duration(&newConfig);
+    printf("task_network.c: totalDuration = %li\r\n", totalDuration);
+
+    // Aktuelle Zeit holen
+    DS3231_Time currentTime;
+    if (!DS3231_GetTime(&currentTime)) {
+        printf("task_network.c: Failed to get current time from RTC\r\n");
+        return;
+    }
+
+    // Startzeit parsen
+    struct tm tm_start;
+    if (!parse_iso8601_datetime(newConfig.startGrowTime, &tm_start)) {
+        printf("task_network.c: Failed to parse startGrowTime\r\n");
+        return;
+    }
+
+    // Umwandlung in Zeitstempel
+    time_t startTimestamp = mktime(&tm_start);
+    time_t currentTimestamp = ds3231_time_to_timestamp(&currentTime);
+
+    // Prüfen, ob der GrowPlan abgelaufen ist
+    if ((currentTimestamp - startTimestamp) > totalDuration) {
+        printf("task_network.c: GrowPlan has already expired, not saving configuration\r\n");
+        return;
+    } else {
+    	printf("task_network.c: Grow is still valid\r\n");
+    }
+
+
 
     /* Speichern der neuen Konfiguration im EEPROM */
     if (save_grow_cycle_config(&newConfig)) {
@@ -578,4 +684,107 @@ void synchronize_rtc(const char *iso8601_time)
     } else {
         printf("task_network.c: Failed to update RTC time\r\n");
     }
+}
+
+void handle_water_command(const char *action, cJSON *value)
+{
+    if (strcmp(action, "setState") == 0 && cJSON_IsString(value)) {
+        const char *desiredState = value->valuestring;
+        printf("task_network.c: Forwarding water state command: %s\r\n", desiredState);
+
+        // Sende den gewünschten Zustand an die Wassersteuerungs-Task
+        WaterCommand waterCmd;
+        if (strcmp(desiredState, "full") == 0) {
+            waterCmd.commandType = WATER_COMMAND_SET_STATE;
+            waterCmd.desiredState = WATER_STATE_FULL;
+        } else if (strcmp(desiredState, "empty") == 0) {
+            waterCmd.commandType = WATER_COMMAND_SET_STATE;
+            waterCmd.desiredState = WATER_STATE_EMPTY;
+        } else {
+            printf("task_network.c: Unknown water state: %s\r\n", desiredState);
+            return;
+        }
+
+        // Sende den Befehl über eine Message Queue
+        if (osMessageQueuePut(xWaterCommandQueueHandle, &waterCmd, 0, 0) != osOK) {
+            printf("task_network.c: Failed to send water command to water controller\r\n");
+        }
+        printf("task_network.c: finished send water command to water controller\r\n");
+    } else {
+        printf("task_network.c: Unknown action for water: %s\r\n", action);
+    }
+}
+
+void handle_light_command(const char *action, cJSON *value)
+{
+    if (strcmp(action, "setIntensity") == 0 && cJSON_IsNumber(value)) {
+        uint8_t intensity = (uint8_t)value->valueint;
+        printf("task_network.c: Forwarding light intensity command: %d\r\n", intensity);
+
+        // Sende den gewünschten Intensitätswert an die Lichtsteuerungs-Task
+        LightCommand lightCmd;
+        lightCmd.commandType = LIGHT_COMMAND_SET_INTENSITY;
+        lightCmd.intensity = intensity;
+
+        // Sende den Befehl über eine Message Queue
+        if (osMessageQueuePut(xLightCommandQueueHandle, &lightCmd, 0, 0) != osOK) {
+            printf("task_network.c: Failed to send light command to light controller\r\n");
+        }
+        printf("task_network.c: Finished sending light command to light controller\r\n");
+    } else {
+        printf("task_network.c: Unknown action for light: %s\r\n", action);
+    }
+}
+
+
+void handle_pump_command(const char *action, int deviceId, cJSON *value)
+{
+    if (strcmp(action, "setState") == 0 && cJSON_IsBool(value)) {
+        bool enable = cJSON_IsTrue(value);
+        printf("task_network.c: Setting pump %d state to %s\r\n", deviceId, enable ? "ON" : "OFF");
+
+        // Aktualisiere den Controller-Zustand
+        UpdatePumpState(enable, deviceId);
+
+        // Sende Befehl an Hardware-Task
+        ControlPump(enable, deviceId);
+    } else {
+        printf("task_network.c: Unknown action for pump: %s\r\n", action);
+    }
+}
+
+
+void handle_system_command(const char *action, cJSON *value)
+{
+    if (strcmp(action, "setAutomaticMode") == 0 && cJSON_IsBool(value)) {
+        bool automaticMode = cJSON_IsTrue(value);
+        printf("task_network.c: Setting automatic mode to %s\r\n", automaticMode ? "ON" : "OFF");
+
+        // Aktualisiere die globale Konfiguration
+        osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+        gGrowCycleConfig.automaticMode = automaticMode;
+        osMutexRelease(gGrowCycleConfigMutexHandle);
+
+        // Speichere nur den automaticMode im EEPROM
+        save_automatic_mode(automaticMode);
+
+        // Event-Flag setzen, um die Controller-Tasks zu benachrichtigen
+        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+    } else {
+        printf("task_network.c: Unknown action for system: %s\r\n", action);
+    }
+}
+
+
+uint32_t calculate_total_duration(GrowCycleConfig *config) {
+    uint32_t totalDuration = 0;
+    // Berechnung der Dauer der LED-Zeitpläne
+    for (uint8_t i = 0; i < config->ledScheduleCount; i++) {
+        LedSchedule *schedule = &config->ledSchedules[i];
+        uint32_t scheduleDuration = (schedule->durationOn + schedule->durationOff) * schedule->repetition;
+        totalDuration += scheduleDuration;
+    }
+    // Berechnung der Dauer der Bewässerungszeitpläne (optional, wenn sie separat berücksichtigt werden sollen)
+    // ...
+    return totalDuration; // Dauer in Sekunden
 }

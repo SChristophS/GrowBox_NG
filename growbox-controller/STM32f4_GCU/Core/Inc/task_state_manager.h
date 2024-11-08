@@ -6,8 +6,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define EEPROM_GROW_CYCLE_CONFIG_ADDR 0x0100  // Beispieladresse
-#define EEPROM_GROW_CYCLE_START_TIME_ADDR 0x0200 // Beispieladresse
+#define EEPROM_AUTOMATIC_MODE_ADDR 		   0x0100
+#define EEPROM_GROW_CYCLE_START_TIME_ADDR  0x0200
+#define EEPROM_GROW_CYCLE_CONFIG_ADDR      0x0300
 
 bool save_grow_cycle_config(GrowCycleConfig *config);
 bool load_grow_cycle_config(GrowCycleConfig *config);

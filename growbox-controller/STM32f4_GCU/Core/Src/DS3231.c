@@ -1,5 +1,6 @@
 #include "ds3231.h"
 #include <string.h>
+#include <time.h>
 
 // Hilfsfunktionen zur BCD-Konvertierung
 static uint8_t BCD_To_Dec(uint8_t val) {
@@ -8,6 +9,18 @@ static uint8_t BCD_To_Dec(uint8_t val) {
 
 static uint8_t Dec_To_BCD(uint8_t val) {
     return ((val / 10 * 16) + (val % 10));
+}
+
+time_t ds3231_time_to_timestamp(DS3231_Time *time) {
+    struct tm tm_time;
+    tm_time.tm_year = time->year - 1900;
+    tm_time.tm_mon = time->month - 1;
+    tm_time.tm_mday = time->dayOfMonth;
+    tm_time.tm_hour = time->hours;
+    tm_time.tm_min = time->minutes;
+    tm_time.tm_sec = time->seconds;
+    tm_time.tm_isdst = -1;
+    return mktime(&tm_time);
 }
 
 bool DS3231_SetTime(DS3231_Time *time) {

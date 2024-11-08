@@ -19,7 +19,7 @@ typedef struct {
     bool sensorOben; // true = aktiviert, false = deaktiviert
     bool sensorUnten; // true = aktiviert, false = deaktiviert
     uint8_t lightIntensity;
-    bool readyForAutoRun; // true wenn Daten korrekt im EEPROM gespeichert sind
+    bool automaticMode; // true wenn flag gesetzt via socket
 } ControllerState;
 
 

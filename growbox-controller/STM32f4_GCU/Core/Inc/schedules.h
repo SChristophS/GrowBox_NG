@@ -28,11 +28,12 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
     uint32_t signature;
-    uint32_t startGrowTime;
+    char startGrowTime[20]; // Platz für ISO8601-Zeitstempel
     uint8_t ledScheduleCount;
     LedSchedule ledSchedules[MAX_LED_SCHEDULES];
     uint8_t wateringScheduleCount;
     WateringSchedule wateringSchedules[MAX_WATERING_SCHEDULES];
+    bool automaticMode;
 } GrowCycleConfig;
 
 

@@ -53,7 +53,41 @@ extern osMessageQueueId_t xWaterControllerQueueHandle;
 extern osMessageQueueId_t xLightControllerQueueHandle;
 extern osMessageQueueId_t xWebSocketQueueHandle;
 extern osMessageQueueId_t xHardwareQueueHandle;
+extern osMessageQueueId_t xWaterCommandQueueHandle;
+extern osMessageQueueId_t xLightCommandQueueHandle;
+
+typedef enum {
+    PHASE_FULL,
+    PHASE_EMPTY
+} WateringPhase;
 
 // Deine anderen Deklarationen und Makros...
+typedef enum {
+    WATER_COMMAND_SET_STATE,
+    // Weitere Befehle können hier hinzugefügt werden
+} WaterCommandType;
+
+typedef enum {
+    WATER_STATE_FULL,
+    WATER_STATE_EMPTY,
+    // Weitere Zustände können hier hinzugefügt werden
+} WaterState;
+
+typedef enum {
+    LIGHT_COMMAND_SET_INTENSITY
+} LightCommandType;
+
+typedef struct {
+    LightCommandType commandType;
+    uint8_t intensity;
+} LightCommand;
+
+typedef struct {
+    WaterCommandType commandType;
+    WaterState desiredState;
+} WaterCommand;
+
+// Deklaration der Message Queue
+
 
 #endif // GLOBALS_H

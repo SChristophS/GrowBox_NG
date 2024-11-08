@@ -190,6 +190,28 @@ const osMessageQueueAttr_t xHardwareQueue_attributes = {
   .mq_mem = &xHardwareQueueBuffer,
   .mq_size = sizeof(xHardwareQueueBuffer)
 };
+/* Definitions for xWaterCommandQueue */
+osMessageQueueId_t xWaterCommandQueueHandle;
+uint8_t xWaterCommandQueueBuffer[ 3 * 4 ];
+osStaticMessageQDef_t xWaterCommandQueueControlBlock;
+const osMessageQueueAttr_t xWaterCommandQueue_attributes = {
+  .name = "xWaterCommandQueue",
+  .cb_mem = &xWaterCommandQueueControlBlock,
+  .cb_size = sizeof(xWaterCommandQueueControlBlock),
+  .mq_mem = &xWaterCommandQueueBuffer,
+  .mq_size = sizeof(xWaterCommandQueueBuffer)
+};
+/* Definitions for xLightCommandQueue */
+osMessageQueueId_t xLightCommandQueueHandle;
+uint8_t xLightCommandQueueBuffer[ 3 * 4 ];
+osStaticMessageQDef_t xLightCommandQueueControlBlock;
+const osMessageQueueAttr_t xLightCommandQueue_attributes = {
+  .name = "xLightCommandQueue",
+  .cb_mem = &xLightCommandQueueControlBlock,
+  .cb_size = sizeof(xLightCommandQueueControlBlock),
+  .mq_mem = &xLightCommandQueueBuffer,
+  .mq_size = sizeof(xLightCommandQueueBuffer)
+};
 /* Definitions for gControllerStateMutex */
 osMutexId_t gControllerStateMutexHandle;
 osStaticMutexDef_t gControllerStateMutexControlBlock;
@@ -273,6 +295,7 @@ void GetSTM32UID(char *uidStr) {
 
 
 
+
 /* USER CODE END 0 */
 
 /**
@@ -328,7 +351,7 @@ int main(void)
   gControllerState.sensorOben = false;
   gControllerState.sensorUnten = false;
   gControllerState.lightIntensity = 0;
-  gControllerState.readyForAutoRun = false;
+  gControllerState.automaticMode = false;
 
 
 
@@ -346,14 +369,7 @@ int main(void)
 
 
 
-//   Init gControllerState as false
-  gControllerState.wasserbeckenZustand = false;
-  gControllerState.pumpeZulauf = false;
-  gControllerState.pumpeAblauf = false;
-  gControllerState.sensorOben = false;
-  gControllerState.sensorUnten = false;
-  gControllerState.lightIntensity = 0;
-  gControllerState.readyForAutoRun = false;
+
 
 
 
@@ -393,6 +409,12 @@ int main(void)
   /* creation of xHardwareQueue */
   xHardwareQueueHandle = osMessageQueueNew (1, 4, &xHardwareQueue_attributes);
 
+  /* creation of xWaterCommandQueue */
+  xWaterCommandQueueHandle = osMessageQueueNew (3, 4, &xWaterCommandQueue_attributes);
+
+  /* creation of xLightCommandQueue */
+  xLightCommandQueueHandle = osMessageQueueNew (3, 4, &xLightCommandQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   if (xWaterControllerQueueHandle == NULL) {
         printf("main.c:\t Error: Failed to create xWaterControllerQueue\r\n");
@@ -404,6 +426,14 @@ int main(void)
 
   if (xHardwareQueueHandle == NULL) {
        printf("main.c:\t Error: Failed to create xAutoGrowQueue\r\n");
+   }
+
+  if (xWaterCommandQueueHandle == NULL) {
+       printf("main.c:\t Error: Failed to create xWaterCommandQueue\r\n");
+   }
+
+  if (xLightCommandQueueHandle == NULL) {
+       printf("main.c:\t Error: Failed to create xLightCommandQueue\r\n");
    }
 
   /* USER CODE END RTOS_QUEUES */
@@ -913,7 +943,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
-
 
 /**
   * @brief  Period elapsed callback in non blocking mode
