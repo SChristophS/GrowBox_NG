@@ -10,56 +10,106 @@
             "startGrowTime": "2024-12-31T23:59:59",
             "ledSchedules": [
                 {
-                    "durationOn": 1,
-                    "durationOff": 10000000,
-                    "repetition": 10
+                    "durationOn": 0,
+                    "durationOff": 1000,
+                    "repetition": 25
                 },
                 {
-                    "durationOn": 2,
-                    "durationOff": 2,
-                    "repetition": 1
+                    "durationOn": 0,
+                    "durationOff": 1000,
+                    "repetition": 50
                 }
             ],
             "wateringSchedules": [
                 {
-                    "duration_full": 0,
-                    "duration_empty": 200000,
-                    "repetition": 5
+                    "duration_full": 500,
+                    "duration_empty": 500,
+                    "repetition": 25
                 },
                 {
-                    "duration_full": 5,
-                    "duration_empty": 5,
-                    "repetition": 2
-                }
-            ],
-            "temperatureTargets": [
-                {
-                    "targetTemperature": 24,
-                    "duration": 60
-                }
-            ],
-            "humidityTargets": [
-                {
-                    "targetHumidity": 60,
-                    "duration": 60
-                },
-                {
-                    "targetHumidity": 65,
-                    "duration": 60
-                }
-            ],
-            "airFilterSchedules": [
-                {
-                    "durationOn": 30,
-                    "durationOff": 30,
-                    "repetition": 10
-                },
-                {
-                    "durationOn": 30,
-                    "durationOff": 30,
-                    "repetition": 10
+                    "duration_full": 500,
+                    "duration_empty": 500,
+                    "repetition": 50
                 }
             ]
         }
+    }
+}
+
+
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "light",
+                "action": "setIntensity",
+                "value": 75
+            },
+            {
+                "target": "pump",
+                "action": "setState",
+                "deviceId": 1,
+                "value": true
+            },
+            {
+                "target": "system",
+                "action": "setAutomaticMode",
+                "value": true
+            }
+        ]
+    }
+}
+
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "system",
+                "action": "setAutomaticMode",
+                "value": true
+            }
+        ]
+    }
+}
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "water",
+                "action": "setState",
+                "value": "voll"
+            }
+        ]
+    }
+}
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "light",
+                "action": "setIntensity",
+                "value": 0
+            }
+        ]
     }
 }
