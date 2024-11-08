@@ -25,29 +25,37 @@
 #include <stdio.h>
 #include <string.h>
 #include "stm32f4xx_hal.h"
-#include "uart_redirect.h"
-#include "wizchip_init.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include "socket.h"
 #include "stdlib.h"
-#include "controller_state.h"
 #include "math.h"
+
+/* other */
+#include "controller_state.h"
+#include "uart_redirect.h"
+#include "wizchip_init.h"
 
 
 /* Tasks */
-#include "task_network.h"
 #include "task_alive.h"
-#include "task_watcher.h"
-#include "task_water_controller.h"
+#include "task_hardware.h"
 #include "task_light_controller.h"
-#include "task_grower.h"
+#include "task_network.h"
+#include "task_sensor.h"
+#include "task_state_manager.h"
+//#include "task_watcher.h"
+#include "task_water_controller.h"
 
 #include "globals.h"
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
+typedef StaticTask_t osStaticThreadDef_t;
+typedef StaticQueue_t osStaticMessageQDef_t;
+typedef StaticSemaphore_t osStaticMutexDef_t;
+typedef StaticEventGroup_t osStaticEventGroupDef_t;
 /* USER CODE BEGIN PTD */
 
 
@@ -79,84 +87,173 @@ UART_HandleTypeDef huart2;
 
 /* Definitions for AliveTask */
 osThreadId_t AliveTaskHandle;
+uint32_t AliveTaskBuffer[ 128 ];
+osStaticThreadDef_t AliveTaskControlBlock;
 const osThreadAttr_t AliveTask_attributes = {
   .name = "AliveTask",
-  .stack_size = 512 * 4,
+  .cb_mem = &AliveTaskControlBlock,
+  .cb_size = sizeof(AliveTaskControlBlock),
+  .stack_mem = &AliveTaskBuffer[0],
+  .stack_size = sizeof(AliveTaskBuffer),
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for NetworkTask */
 osThreadId_t NetworkTaskHandle;
 const osThreadAttr_t NetworkTask_attributes = {
   .name = "NetworkTask",
-  .stack_size = 1280 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for WaterController */
 osThreadId_t WaterControllerHandle;
+uint32_t WaterControllerBuffer[ 512 ];
+osStaticThreadDef_t WaterControllerControlBlock;
 const osThreadAttr_t WaterController_attributes = {
   .name = "WaterController",
-  .stack_size = 512 * 4,
+  .cb_mem = &WaterControllerControlBlock,
+  .cb_size = sizeof(WaterControllerControlBlock),
+  .stack_mem = &WaterControllerBuffer[0],
+  .stack_size = sizeof(WaterControllerBuffer),
   .priority = (osPriority_t) osPriorityNormal1,
-};
-/* Definitions for WatcherTask */
-osThreadId_t WatcherTaskHandle;
-const osThreadAttr_t WatcherTask_attributes = {
-  .name = "WatcherTask",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal2,
 };
 /* Definitions for LightTask */
 osThreadId_t LightTaskHandle;
+uint32_t LightTaskBuffer[ 512 ];
+osStaticThreadDef_t LightTaskControlBlock;
 const osThreadAttr_t LightTask_attributes = {
   .name = "LightTask",
-  .stack_size = 512 * 4,
+  .cb_mem = &LightTaskControlBlock,
+  .cb_size = sizeof(LightTaskControlBlock),
+  .stack_mem = &LightTaskBuffer[0],
+  .stack_size = sizeof(LightTaskBuffer),
   .priority = (osPriority_t) osPriorityNormal2,
 };
-/* Definitions for GrowerTask */
-osThreadId_t GrowerTaskHandle;
-const osThreadAttr_t GrowerTask_attributes = {
-  .name = "GrowerTask",
-  .stack_size = 128 * 4,
+/* Definitions for SensorTask */
+osThreadId_t SensorTaskHandle;
+uint32_t SensorTaskBuffer[ 256 ];
+osStaticThreadDef_t SensorTaskControlBlock;
+const osThreadAttr_t SensorTask_attributes = {
+  .name = "SensorTask",
+  .cb_mem = &SensorTaskControlBlock,
+  .cb_size = sizeof(SensorTaskControlBlock),
+  .stack_mem = &SensorTaskBuffer[0],
+  .stack_size = sizeof(SensorTaskBuffer),
   .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for HardwareTask */
+osThreadId_t HardwareTaskHandle;
+uint32_t HardwareTaskBuffer[ 512 ];
+osStaticThreadDef_t HardwareTaskControlBlock;
+const osThreadAttr_t HardwareTask_attributes = {
+  .name = "HardwareTask",
+  .cb_mem = &HardwareTaskControlBlock,
+  .cb_size = sizeof(HardwareTaskControlBlock),
+  .stack_mem = &HardwareTaskBuffer[0],
+  .stack_size = sizeof(HardwareTaskBuffer),
+  .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for xWaterControllerQueue */
 osMessageQueueId_t xWaterControllerQueueHandle;
+uint8_t xWaterControllerQueueBuffer[ 1 * sizeof( uint8_t ) ];
+osStaticMessageQDef_t xWaterControllerQueueControlBlock;
 const osMessageQueueAttr_t xWaterControllerQueue_attributes = {
-  .name = "xWaterControllerQueue"
+  .name = "xWaterControllerQueue",
+  .cb_mem = &xWaterControllerQueueControlBlock,
+  .cb_size = sizeof(xWaterControllerQueueControlBlock),
+  .mq_mem = &xWaterControllerQueueBuffer,
+  .mq_size = sizeof(xWaterControllerQueueBuffer)
 };
 /* Definitions for xLightControllerQueue */
 osMessageQueueId_t xLightControllerQueueHandle;
+uint8_t xLightControllerQueueBuffer[ 1 * sizeof( uint8_t ) ];
+osStaticMessageQDef_t xLightControllerQueueControlBlock;
 const osMessageQueueAttr_t xLightControllerQueue_attributes = {
-  .name = "xLightControllerQueue"
+  .name = "xLightControllerQueue",
+  .cb_mem = &xLightControllerQueueControlBlock,
+  .cb_size = sizeof(xLightControllerQueueControlBlock),
+  .mq_mem = &xLightControllerQueueBuffer,
+  .mq_size = sizeof(xLightControllerQueueBuffer)
 };
 /* Definitions for xWebSocketQueue */
 osMessageQueueId_t xWebSocketQueueHandle;
 const osMessageQueueAttr_t xWebSocketQueue_attributes = {
   .name = "xWebSocketQueue"
 };
-/* Definitions for xAutoGrowQueue */
-osMessageQueueId_t xAutoGrowQueueHandle;
-const osMessageQueueAttr_t xAutoGrowQueue_attributes = {
-  .name = "xAutoGrowQueue"
+/* Definitions for xHardwareQueue */
+osMessageQueueId_t xHardwareQueueHandle;
+uint8_t xHardwareQueueBuffer[ 1 * 4 ];
+osStaticMessageQDef_t xHardwareQueueControlBlock;
+const osMessageQueueAttr_t xHardwareQueue_attributes = {
+  .name = "xHardwareQueue",
+  .cb_mem = &xHardwareQueueControlBlock,
+  .cb_size = sizeof(xHardwareQueueControlBlock),
+  .mq_mem = &xHardwareQueueBuffer,
+  .mq_size = sizeof(xHardwareQueueBuffer)
+};
+/* Definitions for xWaterCommandQueue */
+osMessageQueueId_t xWaterCommandQueueHandle;
+uint8_t xWaterCommandQueueBuffer[ 3 * 4 ];
+osStaticMessageQDef_t xWaterCommandQueueControlBlock;
+const osMessageQueueAttr_t xWaterCommandQueue_attributes = {
+  .name = "xWaterCommandQueue",
+  .cb_mem = &xWaterCommandQueueControlBlock,
+  .cb_size = sizeof(xWaterCommandQueueControlBlock),
+  .mq_mem = &xWaterCommandQueueBuffer,
+  .mq_size = sizeof(xWaterCommandQueueBuffer)
+};
+/* Definitions for xLightCommandQueue */
+osMessageQueueId_t xLightCommandQueueHandle;
+uint8_t xLightCommandQueueBuffer[ 3 * 4 ];
+osStaticMessageQDef_t xLightCommandQueueControlBlock;
+const osMessageQueueAttr_t xLightCommandQueue_attributes = {
+  .name = "xLightCommandQueue",
+  .cb_mem = &xLightCommandQueueControlBlock,
+  .cb_size = sizeof(xLightCommandQueueControlBlock),
+  .mq_mem = &xLightCommandQueueBuffer,
+  .mq_size = sizeof(xLightCommandQueueBuffer)
 };
 /* Definitions for gControllerStateMutex */
 osMutexId_t gControllerStateMutexHandle;
+osStaticMutexDef_t gControllerStateMutexControlBlock;
 const osMutexAttr_t gControllerStateMutex_attributes = {
-  .name = "gControllerStateMutex"
+  .name = "gControllerStateMutex",
+  .cb_mem = &gControllerStateMutexControlBlock,
+  .cb_size = sizeof(gControllerStateMutexControlBlock),
 };
-/* Definitions for gEEPROMMutex */
-osMutexId_t gEEPROMMutexHandle;
-const osMutexAttr_t gEEPROMMutex_attributes = {
-  .name = "gEEPROMMutex"
+/* Definitions for gGrowCycleConfigMutex */
+osMutexId_t gGrowCycleConfigMutexHandle;
+osStaticMutexDef_t gGrowCycleConfigMutexControlBlock;
+const osMutexAttr_t gGrowCycleConfigMutex_attributes = {
+  .name = "gGrowCycleConfigMutex",
+  .cb_mem = &gGrowCycleConfigMutexControlBlock,
+  .cb_size = sizeof(gGrowCycleConfigMutexControlBlock),
 };
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
+osStaticEventGroupDef_t gControllerEventGroupControlBlock;
 const osEventFlagsAttr_t gControllerEventGroup_attributes = {
-  .name = "gControllerEventGroup"
+  .name = "gControllerEventGroup",
+  .cb_mem = &gControllerEventGroupControlBlock,
+  .cb_size = sizeof(gControllerEventGroupControlBlock),
 };
 /* USER CODE BEGIN PV */
+
+// Definiere hier deine globalen Variablen
+ControllerState gControllerState;
+GrowCycleConfig gGrowCycleConfig;
+
 char uidStr[25];
 
+// Mutexe und Event-Gruppen
+osMutexId_t gControllerStateMutexHandle;
+osMutexId_t gGrowCycleConfigMutexHandle;
+osEventFlagsId_t gControllerEventGroupHandle;
+
+// Queues
+osMessageQueueId_t xWaterControllerQueueHandle;
+osMessageQueueId_t xLightControllerQueueHandle;
+osMessageQueueId_t xWebSocketQueueHandle;
+osMessageQueueId_t xHardwareQueueHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -172,9 +269,9 @@ static void MX_I2C2_Init(void);
 void StartAliveTask(void *argument);
 void StartNetworkTask(void *argument);
 void StartWaterControllerTask(void *argument);
-void StartWatcherTask(void *argument);
 void StartLightTask(void *argument);
-void StartGrowerTask(void *argument);
+void StartSensorTask(void *argument);
+void StartHardwareTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 void InitControllerState(void);
@@ -194,6 +291,7 @@ void GetSTM32UID(char *uidStr) {
         return;
     }
 }
+
 
 
 
@@ -246,10 +344,19 @@ int main(void)
   HAL_Delay(300);
 
 
-  printf("main.c:\t - initialize Mutex and EventGroup\r\n");
-  gControllerStateMutexHandle = osMutexNew(&gControllerStateMutex_attributes);
-  gEEPROMMutexHandle = osMutexNew(&gEEPROMMutex_attributes);
-  gControllerEventGroupHandle = osEventFlagsNew(&gControllerEventGroup_attributes);
+  // Initialisiere gControllerState
+  gControllerState.wasserbeckenZustand = false;
+  gControllerState.pumpeZulauf = false;
+  gControllerState.pumpeAblauf = false;
+  gControllerState.sensorOben = false;
+  gControllerState.sensorUnten = false;
+  gControllerState.lightIntensity = 0;
+  gControllerState.automaticMode = false;
+
+
+
+
+
   printf("main.c:\t - done\r\n");
 
 
@@ -262,28 +369,8 @@ int main(void)
 
 
 
-  // Init gControllerState as false
-  gControllerState.wasserbeckenZustand = false;
-  gControllerState.pumpeZulauf = false;
-  gControllerState.pumpeAblauf = false;
-  gControllerState.sensorVoll = false;
-  gControllerState.sensorLeer = false;
-  gControllerState.lightIntensity = 0;
-  gControllerState.readyForAutoRun = false;
 
-  // Erstellen Sie den Mutex
-  gControllerStateMutex = osMutexNew(NULL);
-  if (gControllerStateMutex == NULL) {
-	  // Fehlerbehandlung
-	printf("task_water_controller.c:\t Fehler beim erstellens des gControllerStateMutex");
-  }
 
-  // Erstellen Sie die Event-Gruppe
-  gControllerEventGroup = osEventFlagsNew(NULL);
-  if (gControllerEventGroup == NULL) {
-	  // Fehlerbehandlung
-	printf("task_water_controller.c:\t Fehler beim erstellen der gControllerEventGroup");
-  }
 
 
   /* USER CODE END 2 */
@@ -294,8 +381,8 @@ int main(void)
   /* creation of gControllerStateMutex */
   gControllerStateMutexHandle = osMutexNew(&gControllerStateMutex_attributes);
 
-  /* creation of gEEPROMMutex */
-  gEEPROMMutexHandle = osMutexNew(&gEEPROMMutex_attributes);
+  /* creation of gGrowCycleConfigMutex */
+  gGrowCycleConfigMutexHandle = osMutexNew(&gGrowCycleConfigMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -311,16 +398,22 @@ int main(void)
 
   /* Create the queue(s) */
   /* creation of xWaterControllerQueue */
-  xWaterControllerQueueHandle = osMessageQueueNew (2, sizeof(uint8_t), &xWaterControllerQueue_attributes);
+  xWaterControllerQueueHandle = osMessageQueueNew (1, sizeof(uint8_t), &xWaterControllerQueue_attributes);
 
   /* creation of xLightControllerQueue */
-  xLightControllerQueueHandle = osMessageQueueNew (16, sizeof(uint8_t), &xLightControllerQueue_attributes);
+  xLightControllerQueueHandle = osMessageQueueNew (1, sizeof(uint8_t), &xLightControllerQueue_attributes);
 
   /* creation of xWebSocketQueue */
-  xWebSocketQueueHandle = osMessageQueueNew (10, 6, &xWebSocketQueue_attributes);
+  xWebSocketQueueHandle = osMessageQueueNew (1, 6, &xWebSocketQueue_attributes);
 
-  /* creation of xAutoGrowQueue */
-  xAutoGrowQueueHandle = osMessageQueueNew (2, sizeof(uint8_t), &xAutoGrowQueue_attributes);
+  /* creation of xHardwareQueue */
+  xHardwareQueueHandle = osMessageQueueNew (1, 4, &xHardwareQueue_attributes);
+
+  /* creation of xWaterCommandQueue */
+  xWaterCommandQueueHandle = osMessageQueueNew (3, 4, &xWaterCommandQueue_attributes);
+
+  /* creation of xLightCommandQueue */
+  xLightCommandQueueHandle = osMessageQueueNew (3, 4, &xLightCommandQueue_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   if (xWaterControllerQueueHandle == NULL) {
@@ -331,8 +424,16 @@ int main(void)
       printf("main.c:\t Error: Failed to create xLightControllerQueue\r\n");
   }
 
-  if (xAutoGrowQueueHandle == NULL) {
+  if (xHardwareQueueHandle == NULL) {
        printf("main.c:\t Error: Failed to create xAutoGrowQueue\r\n");
+   }
+
+  if (xWaterCommandQueueHandle == NULL) {
+       printf("main.c:\t Error: Failed to create xWaterCommandQueue\r\n");
+   }
+
+  if (xLightCommandQueueHandle == NULL) {
+       printf("main.c:\t Error: Failed to create xLightCommandQueue\r\n");
    }
 
   /* USER CODE END RTOS_QUEUES */
@@ -347,14 +448,14 @@ int main(void)
   /* creation of WaterController */
   WaterControllerHandle = osThreadNew(StartWaterControllerTask, NULL, &WaterController_attributes);
 
-  /* creation of WatcherTask */
-  WatcherTaskHandle = osThreadNew(StartWatcherTask, NULL, &WatcherTask_attributes);
-
   /* creation of LightTask */
   LightTaskHandle = osThreadNew(StartLightTask, NULL, &LightTask_attributes);
 
-  /* creation of GrowerTask */
-  GrowerTaskHandle = osThreadNew(StartGrowerTask, NULL, &GrowerTask_attributes);
+  /* creation of SensorTask */
+  SensorTaskHandle = osThreadNew(StartSensorTask, NULL, &SensorTask_attributes);
+
+  /* creation of HardwareTask */
+  HardwareTaskHandle = osThreadNew(StartHardwareTask, NULL, &HardwareTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -381,13 +482,19 @@ int main(void)
     Error_Handler();
   }
 
+
   if (LightTaskHandle == NULL) {
 	printf("main.c:\t - Error: Failed to create LightTaskHandle\r\n");
     Error_Handler();
   }
 
-  if (GrowerTaskHandle == NULL) {
-	printf("main.c:\t - Error: Failed to create GrowerTaskHandle\r\n");
+  if (SensorTaskHandle == NULL) {
+	printf("main.c:\t - Error: Failed to create SensorTaskHandle\r\n");
+    Error_Handler();
+  }
+
+  if (HardwareTaskHandle == NULL) {
+	printf("main.c:\t - Error: Failed to create HardwareTaskHandle\r\n");
     Error_Handler();
   }
 

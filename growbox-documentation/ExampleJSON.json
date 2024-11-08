@@ -1,0 +1,115 @@
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+	"device":       "frontend",
+    "message_type": "newGrowCycle",
+    "payload": {
+        "target": "growCycle",
+        "action": "newGrowCycle",
+        "value": {
+            "startGrowTime": "2024-12-31T23:59:59",
+            "ledSchedules": [
+                {
+                    "durationOn": 0,
+                    "durationOff": 1000,
+                    "repetition": 25
+                },
+                {
+                    "durationOn": 0,
+                    "durationOff": 1000,
+                    "repetition": 50
+                }
+            ],
+            "wateringSchedules": [
+                {
+                    "duration_full": 500,
+                    "duration_empty": 500,
+                    "repetition": 25
+                },
+                {
+                    "duration_full": 500,
+                    "duration_empty": 500,
+                    "repetition": 50
+                }
+            ]
+        }
+    }
+}
+
+
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "light",
+                "action": "setIntensity",
+                "value": 75
+            },
+            {
+                "target": "pump",
+                "action": "setState",
+                "deviceId": 1,
+                "value": true
+            },
+            {
+                "target": "system",
+                "action": "setAutomaticMode",
+                "value": true
+            }
+        ]
+    }
+}
+
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "system",
+                "action": "setAutomaticMode",
+                "value": true
+            }
+        ]
+    }
+}
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "water",
+                "action": "setState",
+                "value": "voll"
+            }
+        ]
+    }
+}
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "light",
+                "action": "setIntensity",
+                "value": 0
+            }
+        ]
+    }
+}

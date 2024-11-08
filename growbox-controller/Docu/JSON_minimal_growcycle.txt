@@ -1,5 +1,5 @@
 {
-	"target_UUID": "asd123asdasdasd",
+	"target_UUID": "003B001C3439471839303732",
 	"message_type": "newGrowCycle",
 	"payload": {
 		"target": "growCycle",

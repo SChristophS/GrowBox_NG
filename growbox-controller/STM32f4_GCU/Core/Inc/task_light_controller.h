@@ -8,6 +8,8 @@
 #ifndef INC_TASK_LIGHT_CONTROLLER_H_
 #define INC_TASK_LIGHT_CONTROLLER_H_
 
-extern TIM_HandleTypeDef htim10;  // Deklaration von htim10
+#include "stm32f4xx_hal.h"
+
+extern TIM_HandleTypeDef htim10;
 
 #endif /* INC_TASK_LIGHT_CONTROLLER_H_ */
