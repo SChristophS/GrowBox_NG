@@ -1,23 +1,15 @@
 /* task_light_controller.c */
 
+#include <state_manager.h>
 #include "task_light_controller.h"
 #include "controller_state.h"
 #include "cmsis_os.h"
 #include "uart_redirect.h"
 #include "hardware.h"
-#include "task_state_manager.h"
 #include "task_hardware.h" // Für HardwareCommand und HardwareCommandType
 #include <stdio.h>
 #include "globals.h"
 #include <string.h>
-
-// Variablen für manuelle Befehle
-extern osMessageQueueId_t xLightCommandQueueHandle;
-
-typedef enum {
-    LIGHT_OFF,
-    LIGHT_ON
-} LightState;
 
 // Funktionsprototypen
 void UpdateLightControllerState(uint8_t lightIntensity);
@@ -45,8 +37,9 @@ void StartLightTask(void *argument)
     bool manualOverride = false;
     uint8_t manualDesiredIntensity = 0;
 
+
     // Versuchen, initial eine Konfiguration zu laden, falls verfügbar
-    if (osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever) == osOK) {
+    if (osMutexAcquire(gGrowCycleConfigMutexHandle, 100) == osOK) {
         memcpy(&growConfig, &gGrowCycleConfig, sizeof(GrowCycleConfig));
         osMutexRelease(gGrowCycleConfigMutexHandle);
         configLoaded = true;
@@ -66,6 +59,34 @@ void StartLightTask(void *argument)
             }
         }
 
+        // Nicht-blockierendes Warten auf neue Konfiguration
+        uint32_t flags = osEventFlagsWait(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE, osFlagsWaitAny | osFlagsNoClear, 0);
+        if (flags & NEW_GROW_CYCLE_CONFIG_AVAILABLE) {
+
+            // Neue Konfiguration local speichern
+            osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+            memcpy(&growConfig, &gGrowCycleConfig, sizeof(GrowCycleConfig));
+            osMutexRelease(gGrowCycleConfigMutexHandle);
+
+            configLoaded = true;
+            finished = false;
+            scheduleIndex = 0;
+            repetitionIndex = 0;
+            currentState = LIGHT_OFF;
+            phaseDuration = 0;
+            printf("task_light_controller.c: New GrowCycleConfig loaded\r\n");
+        } else {
+            // Keine neue Konfiguration verfügbar, kurze Verzögerung und nächste Iteration
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        // Überprüfen, ob eine Konfiguration geladen ist
+        if (!configLoaded || finished) {
+        	printf("task_light_controller.c: No CONFIG OR FINISHED \r\n");
+        }
+
+
         if (manualOverride) {
             printf("task_light_controller.c: Manual override activated\r\n");
             // Manuelle Steuerung
@@ -77,35 +98,17 @@ void StartLightTask(void *argument)
             continue;
         }
 
-        // Überprüfen, ob eine Konfiguration geladen ist
-        if (!configLoaded || finished) {
-            // Nicht-blockierendes Warten auf neue Konfiguration
-            uint32_t flags = osEventFlagsWait(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE, osFlagsWaitAny | osFlagsNoClear, 0);
-            if (flags & NEW_GROW_CYCLE_CONFIG_AVAILABLE) {
-                // Neue Konfiguration laden
-                osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
-                memcpy(&growConfig, &gGrowCycleConfig, sizeof(GrowCycleConfig));
-                osMutexRelease(gGrowCycleConfigMutexHandle);
-                configLoaded = true;
-                finished = false;
-                scheduleIndex = 0;
-                repetitionIndex = 0;
-                currentState = LIGHT_OFF;
-                phaseDuration = 0;
-                printf("task_light_controller.c: New GrowCycleConfig loaded\r\n");
-            } else {
-                // Keine neue Konfiguration verfügbar, kurze Verzögerung und nächste Iteration
-                vTaskDelay(pdMS_TO_TICKS(100));
-                continue;
-            }
-        }
+
+        //printf("task_light_controller.c: gAutomaticModeHandle = %i\r\n", automaticMode);
 
         // Überprüfen, ob Automatikmodus aktiv ist
-        osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
-        bool automatikModusAktiv = gGrowCycleConfig.automaticMode;
-        osMutexRelease(gGrowCycleConfigMutexHandle);
+        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
+        bool isAutomaticMode = automaticMode; // Lokale Kopie erstellen
+        osMutexRelease(gAutomaticModeHandle);
+        printf("task_light_controller.c: Manual override deactivated\r\n");
+        printf("task_light_controller.c: gAutomaticModeHandle = %b\r\n", automaticMode);
 
-        if (!automatikModusAktiv) {
+        if (!isAutomaticMode) {
             printf("task_light_controller.c: Automatic mode is disabled. Turning off light.\r\n");
             lightIntensity = 0;
             UpdateLightControllerState(lightIntensity);
@@ -113,6 +116,7 @@ void StartLightTask(void *argument)
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
+
 
         // Verarbeite die Lichtzeitpläne
         if (scheduleIndex < growConfig.ledScheduleCount) {

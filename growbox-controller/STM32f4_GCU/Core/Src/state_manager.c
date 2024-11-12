@@ -1,6 +1,6 @@
 /* task_state_manager.c */
 
-#include "task_state_manager.h"
+#include <state_manager.h>
 #include "eeprom.h"
 #include <string.h>
 #include "schedules.h"
@@ -17,26 +17,78 @@ bool save_automatic_mode(bool automaticMode);
 bool save_grow_cycle_start_time(DS3231_Time time);
 bool load_grow_cycle_start_time(DS3231_Time *time);
 void InitializeGrowCycleConfig();
+void print_grow_cycle_config();
 
+
+
+void print_grow_cycle_config() {
+    printf("task_state_manager.c: Current GrowCycleConfig:\r\n");
+
+    // Zugriff auf gGrowCycleConfig sichern
+    osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+
+    printf("  StartGrowTime: %s\r\n", gGrowCycleConfig.startGrowTime);
+    printf("  LED Schedule Count: %d\r\n", gGrowCycleConfig.ledScheduleCount);
+    for (uint8_t i = 0; i < gGrowCycleConfig.ledScheduleCount; i++) {
+        LedSchedule *schedule = &gGrowCycleConfig.ledSchedules[i];
+        printf("    LED Schedule %d: durationOn=%lu s, durationOff=%lu s, repetition=%d\r\n",
+               i, (unsigned long)schedule->durationOn, (unsigned long)schedule->durationOff, schedule->repetition);
+    }
+
+    printf("  Watering Schedule Count: %d\r\n", gGrowCycleConfig.wateringScheduleCount);
+    for (uint8_t i = 0; i < gGrowCycleConfig.wateringScheduleCount; i++) {
+        WateringSchedule *schedule = &gGrowCycleConfig.wateringSchedules[i];
+        printf("    Watering Schedule %d: duration_full=%lu s, duration_empty=%lu s, repetition=%d\r\n",
+               i, (unsigned long)schedule->duration_full, (unsigned long)schedule->duration_empty, schedule->repetition);
+    }
+
+    osMutexRelease(gGrowCycleConfigMutexHandle);
+
+    // automaticMode ausgeben
+    osMutexAcquire(gAutomaticModeHandle, osWaitForever);
+    printf("  AutomaticMode: %s\r\n", automaticMode ? "ON" : "OFF");
+    osMutexRelease(gAutomaticModeHandle);
+}
 
 void InitializeGrowCycleConfig() {
-    // Andere Initialisierungen...
+    printf("task_state_manager.c: Initialize Grow Configuration\r\n");
 
-	 printf("task_state_manager.c: Running initial Grow config\r\n");
-
-    // Lade automaticMode aus dem EEPROM
+    GrowCycleConfig storedConfig;
     bool storedAutomaticMode;
-    if (load_automatic_mode(&storedAutomaticMode)) {
-        printf("task_state_manager.c: Loaded automaticMode: %s\r\n", storedAutomaticMode ? "ON" : "OFF");
+    bool newConfigLoaded;
+
+    if (load_grow_cycle_config(&storedConfig)) {
+        printf("task_state_manager.c: Loaded GrowCycleConfig from EEPROM\r\n");
+        newConfigLoaded = true;
+    } else {
+        printf("task_state_manager.c: Failed to load GrowCycleConfig, initializing with default values\r\n");
+        newConfigLoaded = false;
+
+        // Globale Konfiguration mit Standardwerten initialisieren
         osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
-        gGrowCycleConfig.automaticMode = storedAutomaticMode;
+        memset(&gGrowCycleConfig, 0, sizeof(GrowCycleConfig));
         osMutexRelease(gGrowCycleConfigMutexHandle);
+    }
+
+    if (load_automatic_mode(&storedAutomaticMode)) {
+        // **Hier weisen wir den geladenen Wert zu**
+        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
+        automaticMode = storedAutomaticMode;
+        osMutexRelease(gAutomaticModeHandle);
+        printf("task_state_manager.c: Loaded automaticMode: %s\r\n", automaticMode ? "ON" : "OFF");
     } else {
         // Falls Laden fehlschlägt, setzen wir einen Standardwert
+        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
+        automaticMode = false;
+        osMutexRelease(gAutomaticModeHandle);
         printf("task_state_manager.c: Failed to load automaticMode, defaulting to OFF\r\n");
-        osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
-        gGrowCycleConfig.automaticMode = false;
-        osMutexRelease(gGrowCycleConfigMutexHandle);
+    }
+
+    print_grow_cycle_config();
+
+    if (newConfigLoaded){
+        // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
+        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
     }
 }
 
@@ -104,30 +156,55 @@ bool save_grow_cycle_config(GrowCycleConfig *config) {
 }
 
 bool load_automatic_mode(bool *automaticMode) {
-    uint16_t address = EEPROM_AUTOMATIC_MODE_ADDR; // Gleiche Adresse wie beim Speichern
+    uint16_t address = EEPROM_AUTOMATIC_MODE_ADDR;
     printf("task_state_manager.c: Loading automaticMode from EEPROM at address 0x%04X\r\n", address);
 
+    osMutexAcquire(gEepromMutexHandle, osWaitForever);
     if (!EEPROM_Read(address, (uint8_t *)automaticMode, sizeof(bool))) {
         printf("task_state_manager.c: Failed to read automaticMode from EEPROM\r\n");
+        osMutexRelease(gEepromMutexHandle);
         return false;
     }
+    osMutexRelease(gEepromMutexHandle);
 
     printf("task_state_manager.c: automaticMode loaded successfully\r\n");
     return true;
 }
 
+
 bool save_automatic_mode(bool automaticMode) {
-    uint16_t address = EEPROM_AUTOMATIC_MODE_ADDR; // Neue Adresse für automaticMode
+    osMutexAcquire(gEepromMutexHandle, osWaitForever);
+    uint16_t address = EEPROM_AUTOMATIC_MODE_ADDR;
     printf("task_state_manager.c: Saving automaticMode to EEPROM at address 0x%04X\r\n", address);
 
     if (!EEPROM_Write(address, (uint8_t *)&automaticMode, sizeof(bool))) {
         printf("task_state_manager.c: Failed to write automaticMode to EEPROM\r\n");
+        osMutexRelease(gEepromMutexHandle);
         return false;
     }
 
-    printf("task_state_manager.c: automaticMode saved successfully\r\n");
+    // **Neu hinzugefügt: Lesen des gespeicherten Werts zur Validierung**
+    bool readBackAutomaticMode;
+    if (!EEPROM_Read(address, (uint8_t *)&readBackAutomaticMode, sizeof(bool))) {
+        printf("task_state_manager.c: Failed to read back automaticMode from EEPROM\r\n");
+        osMutexRelease(gEepromMutexHandle);
+        return false;
+    }
+
+    if (readBackAutomaticMode != automaticMode) {
+        printf("task_state_manager.c: Read back automaticMode does not match saved value\r\n");
+        osMutexRelease(gEepromMutexHandle);
+        return false;
+    } else {
+        printf("task_state_manager.c: Verified that automaticMode was saved correctly\r\n");
+    }
+
+    osMutexRelease(gEepromMutexHandle);
+
+    printf("task_state_manager.c: automaticMode saved and verified successfully\r\n");
     return true;
 }
+
 
 bool load_grow_cycle_config(GrowCycleConfig *config) {
     if (config == NULL) {
@@ -178,11 +255,8 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
     // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
     osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
 
-
-
     return true;
 }
-
 
 bool save_grow_cycle_start_time(DS3231_Time time) {
     printf("task_state_manager.c: Saving GrowCycle start time to EEPROM at address 0x%04X\r\n", EEPROM_GROW_CYCLE_START_TIME_ADDR);
@@ -196,12 +270,6 @@ bool save_grow_cycle_start_time(DS3231_Time time) {
     return true;
 }
 
-/**
- * Lädt die Startzeit des Grow Cycles aus dem EEPROM.
- *
- * @param time Zeiger auf die DS3231_Time-Struktur, in die die Startzeit geladen werden soll.
- * @return true bei Erfolg, false bei Fehler.
- */
 bool load_grow_cycle_start_time(DS3231_Time *time) {
     if (time == NULL) {
         printf("task_state_manager.c: load_grow_cycle_start_time - Invalid time pointer\r\n");

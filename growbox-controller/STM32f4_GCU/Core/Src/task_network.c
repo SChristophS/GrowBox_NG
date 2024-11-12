@@ -1,5 +1,6 @@
 /* task_network.c */
 
+#include <state_manager.h>
 #include "task_network.h"
 #include "cmsis_os.h"
 #include "socket.h"
@@ -8,30 +9,23 @@
 #include "helper_websocket.h"
 #include "controller_state.h"
 #include "uart_redirect.h"
-#include "globals.h"
+#include <inttypes.h>
+
 #include "ds3231.h"
 #include "eeprom.h"
 #include "schedules.h"
-#include "task_state_manager.h"
 #include "cJSON.h"
 #include "time_utils.h"
 #include "sha1.h"
 #include "base64.h"
+#include "task_water_controller.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 
-
-
-/* Netzwerk-Einstellungen */
-#define MY_IP          {192, 168, 178, 100}
-#define SUBNET_MASK    {255, 255, 255, 0}
-#define GATEWAY        {192, 168, 178, 1}
-#define DNS_SERVER     {8, 8, 8, 8}
-#define MAC_ADDRESS    {0x00, 0x08, 0xdc, 0xab, 0xcd, 0xef}
-#define LOCAL_PORT     50000
+#include "globals.h"
 
 /* Zielserver-Einstellungen */
 uint8_t destip[4] = {192, 168, 178, 25}; // IP-Adresse des Zielservers
@@ -77,10 +71,6 @@ void StartNetworkTask(void *argument)
 {
     printf("task_network.c: Starting Network Task\r\n");
 
-    printf("task_network.c: calling InitializeGrowCycleConfig\r\n");
-    InitializeGrowCycleConfig();
-
-
     /* Netzwerk initialisieren */
     network_init();
 
@@ -121,7 +111,6 @@ void StartNetworkTask(void *argument)
         osDelay(100);
     }
 }
-
 
 void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected)
 {
@@ -369,8 +358,9 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
         header_length += 4;
     }
 
-    printf("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %llu\r\n",
+    printf("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %" PRIu64 "\r\n",
            opcode, fin, mask, payload_length);
+
 
     /* Unmasking des Payloads */
     if (mask) {
@@ -489,7 +479,6 @@ void parse_control_command(cJSON *root)
     }
 }
 
-
 void parse_new_grow_cycle(cJSON *root)
 {
     printf("task_network.c: Parsing new grow cycle configuration\r\n");
@@ -517,16 +506,6 @@ void parse_new_grow_cycle(cJSON *root)
     } else {
         printf("task_network.c: startGrowTime not found or invalid\r\n");
         return;
-    }
-
-    /* automaticMode */
-    cJSON *automaticMode = cJSON_GetObjectItem(value, "automaticMode");
-    if (automaticMode != NULL && cJSON_IsBool(automaticMode)) {
-        newConfig.automaticMode = cJSON_IsTrue(automaticMode);
-        printf("task_network.c: automaticMode: %s\r\n", newConfig.automaticMode ? "true" : "false");
-    } else {
-        printf("task_network.c: automaticMode not found or invalid, defaulting to false\r\n");
-        newConfig.automaticMode = false;
     }
 
     /* ledSchedules */
@@ -574,8 +553,6 @@ void parse_new_grow_cycle(cJSON *root)
     } else {
     	printf("task_network.c: Grow is still valid\r\n");
     }
-
-
 
     /* Speichern der neuen Konfiguration im EEPROM */
     if (save_grow_cycle_config(&newConfig)) {
@@ -639,26 +616,6 @@ void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config)
             }
         }
     }
-}
-
-bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time)
-{
-    int year, month, day, hour, min, sec;
-    if (sscanf(datetime_str, "%4d-%2d-%2dT%2d:%2d:%2d",
-               &year, &month, &day, &hour, &min, &sec) != 6)
-    {
-        return false;
-    }
-
-    tm_time->tm_year = year - 1900; // `tm_year` ist die Anzahl der Jahre seit 1900
-    tm_time->tm_mon = month - 1;    // `tm_mon` ist 0-basiert (0 = Januar)
-    tm_time->tm_mday = day;
-    tm_time->tm_hour = hour;
-    tm_time->tm_min = min;
-    tm_time->tm_sec = sec;
-    tm_time->tm_isdst = -1; // Daylight Saving Time unbekannt
-
-    return true;
 }
 
 void synchronize_rtc(const char *iso8601_time)
@@ -736,7 +693,6 @@ void handle_light_command(const char *action, cJSON *value)
     }
 }
 
-
 void handle_pump_command(const char *action, int deviceId, cJSON *value)
 {
     if (strcmp(action, "setState") == 0 && cJSON_IsBool(value)) {
@@ -753,28 +709,25 @@ void handle_pump_command(const char *action, int deviceId, cJSON *value)
     }
 }
 
-
 void handle_system_command(const char *action, cJSON *value)
 {
     if (strcmp(action, "setAutomaticMode") == 0 && cJSON_IsBool(value)) {
-        bool automaticMode = cJSON_IsTrue(value);
-        printf("task_network.c: Setting automatic mode to %s\r\n", automaticMode ? "ON" : "OFF");
+        bool newAutomaticMode = cJSON_IsTrue(value);
+        printf("task_network.c: Setting automatic mode to %s\r\n", newAutomaticMode ? "ON" : "OFF");
 
-        // Aktualisiere die globale Konfiguration
-        osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
-        gGrowCycleConfig.automaticMode = automaticMode;
-        osMutexRelease(gGrowCycleConfigMutexHandle);
+        // Aktualisiere den globalen Wert
+        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
+        automaticMode = newAutomaticMode;
+        osMutexRelease(gAutomaticModeHandle);
 
         // Speichere nur den automaticMode im EEPROM
-        save_automatic_mode(automaticMode);
-
-        // Event-Flag setzen, um die Controller-Tasks zu benachrichtigen
-        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+        if (!save_automatic_mode(automaticMode)) {
+            printf("task_network.c: Failed to save automatic mode\r\n");
+        }
     } else {
         printf("task_network.c: Unknown action for system: %s\r\n", action);
     }
 }
-
 
 uint32_t calculate_total_duration(GrowCycleConfig *config) {
     uint32_t totalDuration = 0;

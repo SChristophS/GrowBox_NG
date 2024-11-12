@@ -5,40 +5,24 @@
 #include "uart_redirect.h"
 #include <stdlib.h>
 
-
-//extern I2C_HandleTypeDef hi2c2;
-//#define EEPROM_I2C &hi2c2
-
-
-
-
 void StartAliveTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-	printf("task_alive.c:\t Init\r\n");
-
-
-
-
+	printf("task_alive.c:\t Task started\r\n");
 
   /* Infinite loop */
-
-
-
   for(;;)
   {
-	  printf("task_alive.c:\tToggleLED\r\n");
-	  		//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
-	  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
-	  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-	  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+	printf("task_alive.c:\tToggleLED\r\n");
 
-	  //osDelay(999); // Warte 1 Sekunde
-	  vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-
-
+	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+	vTaskDelay(250 / portTICK_PERIOD_MS);
+	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
+	vTaskDelay(250 / portTICK_PERIOD_MS);
+	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
+	vTaskDelay(250 / portTICK_PERIOD_MS);
+	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
+	vTaskDelay(250 / portTICK_PERIOD_MS);
   }
   /* USER CODE END 5 */
 }

@@ -22,9 +22,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32f4xx_hal.h"
 #include <stdio.h>
 #include <string.h>
-#include "stm32f4xx_hal.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include "socket.h"
@@ -32,10 +32,12 @@
 #include "math.h"
 
 /* other */
+#include "globals.h"
+
 #include "controller_state.h"
+#include "state_manager.h"
 #include "uart_redirect.h"
 #include "wizchip_init.h"
-
 
 /* Tasks */
 #include "task_alive.h"
@@ -43,11 +45,9 @@
 #include "task_light_controller.h"
 #include "task_network.h"
 #include "task_sensor.h"
-#include "task_state_manager.h"
-//#include "task_watcher.h"
 #include "task_water_controller.h"
 
-#include "globals.h"
+
 
 /* USER CODE END Includes */
 
@@ -101,7 +101,7 @@ const osThreadAttr_t AliveTask_attributes = {
 osThreadId_t NetworkTaskHandle;
 const osThreadAttr_t NetworkTask_attributes = {
   .name = "NetworkTask",
-  .stack_size = 1024 * 4,
+  .stack_size = 2048 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for WaterController */
@@ -228,6 +228,22 @@ const osMutexAttr_t gGrowCycleConfigMutex_attributes = {
   .cb_mem = &gGrowCycleConfigMutexControlBlock,
   .cb_size = sizeof(gGrowCycleConfigMutexControlBlock),
 };
+/* Definitions for gAutomaticMode */
+osMutexId_t gAutomaticModeHandle;
+osStaticMutexDef_t gAutomaticModeControlBlock;
+const osMutexAttr_t gAutomaticMode_attributes = {
+  .name = "gAutomaticMode",
+  .cb_mem = &gAutomaticModeControlBlock,
+  .cb_size = sizeof(gAutomaticModeControlBlock),
+};
+/* Definitions for gEepromMutex */
+osMutexId_t gEepromMutexHandle;
+osStaticMutexDef_t gEepromMutexControlBlock;
+const osMutexAttr_t gEepromMutex_attributes = {
+  .name = "gEepromMutex",
+  .cb_mem = &gEepromMutexControlBlock,
+  .cb_size = sizeof(gEepromMutexControlBlock),
+};
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
 osStaticEventGroupDef_t gControllerEventGroupControlBlock;
@@ -238,22 +254,14 @@ const osEventFlagsAttr_t gControllerEventGroup_attributes = {
 };
 /* USER CODE BEGIN PV */
 
-// Definiere hier deine globalen Variablen
+// globale Variablen
 ControllerState gControllerState;
 GrowCycleConfig gGrowCycleConfig;
-
 char uidStr[25];
+bool automaticMode;
 
-// Mutexe und Event-Gruppen
-osMutexId_t gControllerStateMutexHandle;
-osMutexId_t gGrowCycleConfigMutexHandle;
-osEventFlagsId_t gControllerEventGroupHandle;
 
-// Queues
-osMessageQueueId_t xWaterControllerQueueHandle;
-osMessageQueueId_t xLightControllerQueueHandle;
-osMessageQueueId_t xWebSocketQueueHandle;
-osMessageQueueId_t xHardwareQueueHandle;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -287,13 +295,12 @@ void GetSTM32UID(char *uidStr) {
     uid[2] = *(uint32_t *)0x1FFF7A18;
 
     if (sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]) < 0) {
-        printf("task_network.c:\t - Error formatting UID string\r\n");
+        printf("main.c:\t - Error formatting UID string\r\n");
         return;
     }
+
+    printf("main.c:\t STM32 UID ausgelesen und gespeichert: %s\r\n", uidStr);
 }
-
-
-
 
 
 /* USER CODE END 0 */
@@ -336,7 +343,7 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("main.c:\t - NextGeneration Growbox Project - \r\n");
+  printf("main.c:\t NextGeneration Growbox Project - \r\n");
 
   resetAssert();
   HAL_Delay(300);
@@ -354,22 +361,7 @@ int main(void)
   gControllerState.automaticMode = false;
 
 
-
-
-
-  printf("main.c:\t - done\r\n");
-
-
-
   GetSTM32UID(uidStr);
-  printf("main.c:\t STM32 UID ausgelesen und gespeichert: %s\r\n", uidStr);
-
-  //
-  printf("Size of MessageForWebSocket: %lu bytes\n", (unsigned long)sizeof(MessageForWebSocket));
-
-
-
-
 
 
 
@@ -383,6 +375,12 @@ int main(void)
 
   /* creation of gGrowCycleConfigMutex */
   gGrowCycleConfigMutexHandle = osMutexNew(&gGrowCycleConfigMutex_attributes);
+
+  /* creation of gAutomaticMode */
+  gAutomaticModeHandle = osMutexNew(&gAutomaticMode_attributes);
+
+  /* creation of gEepromMutex */
+  gEepromMutexHandle = osMutexNew(&gEepromMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -498,9 +496,21 @@ int main(void)
     Error_Handler();
   }
 
+
+
+  /* Überprüfen Sie, ob die Mutexe erfolgreich erstellt wurden */
+  if (gControllerStateMutexHandle == NULL ||
+      gGrowCycleConfigMutexHandle == NULL ||
+      gAutomaticModeHandle == NULL ||
+      gEepromMutexHandle == NULL) {
+      printf("main.c:\t Error: Failed to create one or more mutexes\r\n");
+      Error_Handler();
+  }
+
+  printf("main.c:\t calling InitializeGrowCycleConfig\r\n");
+  InitializeGrowCycleConfig();
+
   printf("main.c:\t - done\r\n");
-
-
   /* add events, ... */
 
   /* USER CODE END RTOS_EVENTS */

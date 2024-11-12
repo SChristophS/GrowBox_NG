@@ -33,7 +33,6 @@ typedef struct __attribute__((packed)) {
     LedSchedule ledSchedules[MAX_LED_SCHEDULES];
     uint8_t wateringScheduleCount;
     WateringSchedule wateringSchedules[MAX_WATERING_SCHEDULES];
-    bool automaticMode;
 } GrowCycleConfig;
 
 

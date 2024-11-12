@@ -5,6 +5,7 @@
 #include "hardware.h"
 #include "uart_redirect.h"
 #include "main.h"
+#include "globals.h"
 #include <stdio.h>
 
 extern osMessageQueueId_t xHardwareQueueHandle;

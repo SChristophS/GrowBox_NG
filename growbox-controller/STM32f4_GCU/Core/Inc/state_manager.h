@@ -16,6 +16,8 @@ bool load_grow_cycle_config(GrowCycleConfig *config);
 bool save_grow_cycle_start_time(DS3231_Time time);
 bool load_grow_cycle_start_time(DS3231_Time *time);
 
+void InitializeGrowCycleConfig();
+bool save_automatic_mode(bool automaticMode);
 // Weitere Funktionen...
 
 #endif // TASK_STATE_MANAGER_H

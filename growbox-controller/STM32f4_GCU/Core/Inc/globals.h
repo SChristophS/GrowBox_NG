@@ -37,15 +37,26 @@
 #define WATER_STATE_CHANGED_BIT (1 << 7)
 #define NEW_GROW_CYCLE_CONFIG_AVAILABLE  (1 << 8)
 
+/* Netzwerk-Einstellungen */
+#define MY_IP          {192, 168, 178, 100}
+#define SUBNET_MASK    {255, 255, 255, 0}
+#define GATEWAY        {192, 168, 178, 1}
+#define DNS_SERVER     {8, 8, 8, 8}
+#define MAC_ADDRESS    {0x00, 0x08, 0xdc, 0xab, 0xcd, 0xef}
+#define LOCAL_PORT     50000
+
 // Globale Variablen
 extern ControllerState gControllerState;
 extern GrowCycleConfig gGrowCycleConfig;
+extern bool automaticMode;
 
 extern char uidStr[25];
 
 // Mutexe und Event-Gruppen
 extern osMutexId_t gControllerStateMutexHandle;
 extern osMutexId_t gGrowCycleConfigMutexHandle;
+extern osMutexId_t gAutomaticModeHandle;
+extern osMutexId_t gEepromMutexHandle;
 extern osEventFlagsId_t gControllerEventGroupHandle;
 
 // Queues
@@ -55,6 +66,20 @@ extern osMessageQueueId_t xWebSocketQueueHandle;
 extern osMessageQueueId_t xHardwareQueueHandle;
 extern osMessageQueueId_t xWaterCommandQueueHandle;
 extern osMessageQueueId_t xLightCommandQueueHandle;
+
+
+
+
+
+
+
+typedef struct {
+    uint8_t message_type;
+    uint8_t device;
+    uint8_t target;
+    uint8_t action;
+    uint16_t value;
+} MessageForWebSocket;
 
 typedef enum {
     PHASE_FULL,
@@ -87,7 +112,21 @@ typedef struct {
     WaterState desiredState;
 } WaterCommand;
 
-// Deklaration der Message Queue
+typedef enum {
+    COMMAND_CONTROL_PUMP,
+    COMMAND_CONTROL_LIGHT,
+} HardwareCommandType;
 
+typedef struct {
+    HardwareCommandType commandType;
+    uint8_t deviceId;
+    bool enable;
+    uint8_t intensity;
+} HardwareCommand;
+
+typedef enum {
+    LIGHT_OFF,
+    LIGHT_ON
+} LightState;
 
 #endif // GLOBALS_H

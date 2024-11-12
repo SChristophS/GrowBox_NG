@@ -1,11 +1,11 @@
 /* task_water_controller.c */
 
+#include <state_manager.h>
 #include "task_water_controller.h"
 #include "controller_state.h"
 #include "cmsis_os.h"
 #include "uart_redirect.h"
 #include "hardware.h"
-#include "task_state_manager.h"
 #include "schedules.h"
 #include <stdio.h>
 #include "globals.h"
@@ -60,7 +60,6 @@ void ControlPump(bool enable, uint8_t pumpId) {
     // Sende Befehl an Hardware-Task
     osMessageQueuePut(xHardwareQueueHandle, &cmd, 0, 0);
 }
-
 
 void achieve_water_state_full(void)
 {
@@ -219,19 +218,20 @@ void StartWaterControllerTask(void *argument)
             }
         }
 
-        // Automatikmodus überprüfen
-        osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
-        bool automatikModusAktiv = gGrowCycleConfig.automaticMode;
-        osMutexRelease(gGrowCycleConfigMutexHandle);
 
-        if (!automatikModusAktiv) {
+        // Überprüfen, ob Automatikmodus aktiv ist
+        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
+        if (!automaticMode) {
             printf("task_water_controller.c: Automatic mode is disabled. Turning Pumps off.\r\n");
             ControlPump(false, PUMP_ZULAUF);
             ControlPump(false, PUMP_ABLAUF);
 
+            osMutexRelease(gAutomaticModeHandle);
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
+        osMutexRelease(gAutomaticModeHandle);
+
 
         // Automatischen Zeitplan ausführen
         if (scheduleIndex < growConfig.wateringScheduleCount) {
