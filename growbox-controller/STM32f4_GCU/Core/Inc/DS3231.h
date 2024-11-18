@@ -11,6 +11,7 @@
 #include "stm32f4xx_hal.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 
 // I2C-Handler extern deklarieren
 extern I2C_HandleTypeDef hi2c2;
@@ -29,9 +30,12 @@ typedef struct {
     uint16_t year;       // Vierstelliges Jahr
 } DS3231_Time;
 
-// Funktionen zum Lesen und Schreiben der Zeit
+//
+time_t ds3231_time_to_timestamp(DS3231_Time *time);
 bool DS3231_SetTime(DS3231_Time *time);
 bool DS3231_GetTime(DS3231_Time *time);
+time_t get_current_time(void);
+bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time);
 
 #endif // DS3231_H
 

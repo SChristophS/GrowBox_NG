@@ -1,6 +1,7 @@
 #include "ds3231.h"
 #include <string.h>
-#include <time.h>
+#include "time.h"
+#include "logger.h"
 
 // Hilfsfunktionen zur BCD-Konvertierung
 static uint8_t BCD_To_Dec(uint8_t val) {
@@ -56,3 +57,14 @@ bool DS3231_GetTime(DS3231_Time *time) {
 
     return true;
 }
+
+time_t get_current_time(void) {
+    DS3231_Time rtc_time;
+    if (DS3231_GetTime(&rtc_time)) {
+        return ds3231_time_to_timestamp(&rtc_time);
+    } else {
+        LOG_ERROR("task_light_controller:\tFailed to get time from RTC");
+        return -1;
+    }
+}
+

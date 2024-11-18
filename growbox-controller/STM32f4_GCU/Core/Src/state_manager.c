@@ -1,15 +1,15 @@
 /* task_state_manager.c */
 
-#include <state_manager.h>
+#include "state_manager.h"
 #include "eeprom.h"
 #include <string.h>
-#include "schedules.h"
 #include <stdio.h>
 #include "uart_redirect.h"
 #include "controller_state.h"
 #include "main.h"
 #include "globals.h"
 #include "logger.h"
+#include "time_utils.h"
 
 
 bool load_automatic_mode(bool *automaticMode);
@@ -51,17 +51,18 @@ void print_grow_cycle_config() {
     osMutexRelease(gAutomaticModeHandle);
 }
 
-void InitializeGrowCycleConfig() {
+void InitializeGrowCycleConfig(void) {
     LOG_INFO("state_manager.c:\t Initialize Grow Configuration");
 
-    // create necesarry variables
     GrowCycleConfig storedConfig;
     bool storedAutomaticMode;
     bool newConfigLoaded;
 
-    // beim laden wird der Inhalt automatisch in die globale variable gGrowCycleConfig kopiert
-    // beim laden wird das flag NEW_GROW_CYCLE_CONFIG_AVAILABLE gesetzt
-    if (load_grow_cycle_config(&storedConfig)) {
+    time_t startTime;
+    bool timeSynchronized;
+
+    // Beim Laden wird der Inhalt automatisch in die globale Variable gGrowCycleConfig kopiert
+    if (load_grow_cycle_config(&storedConfig, &startTime, &timeSynchronized)) {
         LOG_INFO("state_manager.c:\t Loaded GrowCycleConfig from EEPROM");
         newConfigLoaded = true;
     } else {
@@ -88,12 +89,11 @@ void InitializeGrowCycleConfig() {
     print_grow_cycle_config();
 
     if (newConfigLoaded){
-		LOG_INFO("state_manager.c:\t New Configuration is loaded, set Flag");
+        LOG_INFO("state_manager.c:\t New Configuration is loaded, set Flag");
         osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
         osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
     }
 
-    // Setze das Initialisierungs-Event-Flag
     LOG_INFO("state_manager.c:\t Initialization complete");
 }
 
@@ -209,22 +209,38 @@ bool save_automatic_mode(bool automaticMode) {
     return true;
 }
 
-bool load_grow_cycle_config(GrowCycleConfig *config) {
-    if (config == NULL) {
-        printf("task_state_manager.c: load_grow_cycle_config - Invalid config pointer\r\n");
+bool load_grow_cycle_config(GrowCycleConfig *config, time_t *startTime, bool *timeSynchronized) {
+    if (config == NULL || startTime == NULL || timeSynchronized == NULL) {
+        printf("state_manager.c: load_grow_cycle_config - Invalid pointer(s)\r\n");
         return false;
     }
 
-    printf("task_state_manager.c: Loading GrowCycleConfig from EEPROM at address 0x%04X\r\n", EEPROM_GROW_CYCLE_CONFIG_ADDR);
+    printf("state_manager.c: Loading GrowCycleConfig from EEPROM at address 0x%04X\r\n", EEPROM_GROW_CYCLE_CONFIG_ADDR);
 
-    // Lese die Daten aus dem EEPROM
+    // Lese die Konfiguration aus dem EEPROM
     if (!EEPROM_Read(EEPROM_GROW_CYCLE_CONFIG_ADDR, (uint8_t *)config, sizeof(GrowCycleConfig))) {
-        printf("task_state_manager.c: Failed to read GrowCycleConfig from EEPROM\r\n");
+        printf("state_manager.c: Failed to read GrowCycleConfig from EEPROM\r\n");
         return false;
     }
 
-    printf("task_state_manager.c: Size of GrowCycleConfig expected: %lu bytes\r\n", (unsigned long)sizeof(GrowCycleConfig));
-
+    // Startzeit aus startGrowTime parsen
+    struct tm start_tm;
+    if (parse_iso8601_datetime(config->startGrowTime, &start_tm)) {
+        *startTime = mktime(&start_tm);
+        if (*startTime == -1)
+        {
+            printf("state_manager.c: Failed to convert startGrowTime to time_t\r\n");
+            *timeSynchronized = false;
+        }
+        else
+        {
+            *timeSynchronized = true;
+            printf("state_manager.c: Parsed startGrowTime successfully\r\n");
+        }
+    } else {
+        printf("state_manager.c: Failed to parse startGrowTime\r\n");
+        *timeSynchronized = false;
+    }
 
     // Debug-Ausgaben des geladenen Konfigurationsinhalts
     printf("task_state_manager.c: GrowCycleConfig loaded successfully\r\n");
@@ -240,13 +256,11 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
     // Ähnliche Debug-Ausgaben für andere Zeitpläne (z.B. Bewässerungspläne)
     printf("task_state_manager.c: Watering Schedule Count: %d\r\n", config->wateringScheduleCount);
 
-
     for (uint8_t i = 0; i < config->wateringScheduleCount; i++) {
         WateringSchedule *schedule = &config->wateringSchedules[i];
         printf("task_state_manager.c: Watering Schedule %d: duration_full=%lu s, duration_empty=%lu s, repetition=%d\r\n",
                i, (unsigned long)schedule->duration_full, (unsigned long)schedule->duration_empty, schedule->repetition);
     }
-
 
     printf("task_state_manager.c: Set flag that new GrowCycle is available\r\n");
 
@@ -254,10 +268,6 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
     osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
     memcpy(&gGrowCycleConfig, config, sizeof(GrowCycleConfig));
     osMutexRelease(gGrowCycleConfigMutexHandle);
-
-    // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
-    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
-    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
 
     return true;
 }
@@ -271,6 +281,11 @@ bool save_grow_cycle_start_time(DS3231_Time time) {
     }
 
     printf("task_state_manager.c: GrowCycle start time saved successfully\r\n");
+
+    // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
+
     return true;
 }
 
