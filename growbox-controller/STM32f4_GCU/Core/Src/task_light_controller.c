@@ -19,9 +19,9 @@ void ControlLight(uint8_t lightIntensity);
 void achieve_light_intensity(uint8_t intensity);
 bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time);
 time_t get_current_timestamp(void);
-bool wait_for_start_time(struct tm *startTimeTm);
+static bool wait_for_start_time(struct tm *startTimeTm);
 
-void adjust_schedule_based_on_elapsed_time(
+static void adjust_schedule_based_on_elapsed_time(
     LedSchedule *ledSchedules,
     uint8_t ledScheduleCount,
     time_t elapsedTime,
@@ -44,7 +44,7 @@ void adjust_schedule_for_elapsed_time(
     bool *finished);
 
 // Neue Hilfsfunktionen
-void handle_manual_override(LightCommand *receivedCommand, bool *manualOverride, uint8_t *manualDesiredIntensity);
+static void handle_manual_override(LightCommand *receivedCommand, bool *manualOverride, uint8_t *manualDesiredIntensity);
 
 void process_light_schedule(
     GrowCycleConfig *growConfig,
@@ -198,7 +198,7 @@ void StartLightTask(void *argument)
 
 
 // 2. Manuelle Befehle prüfen und verarbeiten
-void handle_manual_override(LightCommand *receivedCommand, bool *manualOverride, uint8_t *manualDesiredIntensity)
+static void handle_manual_override(LightCommand *receivedCommand, bool *manualOverride, uint8_t *manualDesiredIntensity)
 {
     if (osMessageQueueGet(xLightCommandQueueHandle, receivedCommand, NULL, 0) == osOK)
     {
@@ -212,7 +212,7 @@ void handle_manual_override(LightCommand *receivedCommand, bool *manualOverride,
 }
 
 // 5. Warten bis Startzeit erreicht ist
-bool wait_for_start_time(struct tm *startTimeTm)
+static bool wait_for_start_time(struct tm *startTimeTm)
 {
     struct tm currentTimeTm;
     if (!get_current_time(&currentTimeTm)) {
@@ -245,7 +245,7 @@ bool wait_for_start_time(struct tm *startTimeTm)
 
 
 // 6. Zeitplan anpassen basierend auf verstrichener Zeit
-void adjust_schedule_based_on_elapsed_time(
+static void adjust_schedule_based_on_elapsed_time(
     LedSchedule *ledSchedules,
     uint8_t ledScheduleCount,
     time_t elapsedTime,
