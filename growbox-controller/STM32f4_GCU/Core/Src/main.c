@@ -38,6 +38,7 @@
 #include "state_manager.h"
 #include "uart_redirect.h"
 #include "wizchip_init.h"
+#include "logger.h"
 
 /* Tasks */
 #include "task_alive.h"
@@ -311,11 +312,12 @@ void GetSTM32UID(char *uidStr) {
     uid[2] = *(uint32_t *)0x1FFF7A18;
 
     if (sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]) < 0) {
-        printf("main.c:\t - Error formatting UID string\r\n");
+        LOG_INFO("main.c:\t - Error formatting UID string");
         return;
     }
 
-    printf("main.c:\t STM32 UID ausgelesen und gespeichert: %s\r\n", uidStr);
+    LOG_INFO("main.c:\t STM32 UID ausgelesen und gespeichert: %s", uidStr);
+
 }
 
 
@@ -359,7 +361,7 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("main.c:\t NextGeneration Growbox Project - \r\n");
+  LOG_INFO("main.c:\t NextGeneration Growbox Project");
 
   resetAssert();
   HAL_Delay(300);
@@ -486,7 +488,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_EVENTS */
 
-  printf("main.c:\t - check if all Tasks are created correctly...");
+  LOG_INFO("main.c:\t - check if all Tasks are created correctly...");
   // check if all Tasks are created correctly
   if (AliveTaskHandle == NULL) {
 	printf("main.c:\t - Error: Failed to create AliveTask\r\n");
@@ -529,7 +531,8 @@ int main(void)
       Error_Handler();
   }
 
-  printf("main.c:\t calling InitializeGrowCycleConfig\r\n");
+  LOG_INFO("main.c:\t calling InitializeGrowCycleConfig");
+
   InitializeGrowCycleConfig();
 
   printf("main.c:\t - done\r\n");

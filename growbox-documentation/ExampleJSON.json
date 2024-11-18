@@ -10,14 +10,14 @@
             "startGrowTime": "2024-12-31T23:59:59",
             "ledSchedules": [
                 {
-                    "durationOn": 0,
-                    "durationOff": 1000,
-                    "repetition": 25
+                    "durationOn": 5,
+                    "durationOff": 5,
+                    "repetition": 2
                 },
                 {
-                    "durationOn": 0,
-                    "durationOff": 1000,
-                    "repetition": 50
+                    "durationOn": 1,
+                    "durationOff": 10,
+                    "repetition": 10000
                 }
             ],
             "wateringSchedules": [
@@ -76,7 +76,7 @@
             {
                 "target": "system",
                 "action": "setAutomaticMode",
-                "value": true
+                "value": false
             }
         ]
     }

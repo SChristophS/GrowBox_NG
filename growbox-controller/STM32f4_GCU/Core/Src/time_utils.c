@@ -1,13 +1,14 @@
+/* time_utils.c */
+
 #include "time_utils.h"
+#include "DS3231.h"
+#include "logger.h"
 #include <stdio.h>
 
-
-bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time)
-{
+bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time) {
     int year, month, day, hour, min, sec;
     if (sscanf(datetime_str, "%4d-%2d-%2dT%2d:%2d:%2d",
-               &year, &month, &day, &hour, &min, &sec) != 6)
-    {
+               &year, &month, &day, &hour, &min, &sec) != 6) {
         return false;
     }
 
@@ -17,33 +18,44 @@ bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time)
     tm_time->tm_hour = hour;
     tm_time->tm_min = min;
     tm_time->tm_sec = sec;
-    tm_time->tm_isdst = -1; // Daylight Saving Time unbekannt
+    tm_time->tm_isdst = -1;         // Daylight Saving Time unbekannt
 
     return true;
 }
 
+bool get_current_time(struct tm *currentTime) {
+    DS3231_Time rtcTime;
+    if (!DS3231_GetTime(&rtcTime)) {
+        LOG_ERROR("get_current_time: Failed to get time from RTC");
+        return false;
+    }
 
-uint32_t calculate_elapsed_seconds(DS3231_Time *startTime, DS3231_Time *currentTime) {
-    struct tm start_tm = {
-        .tm_year = startTime->year - 1900,
-        .tm_mon = startTime->month - 1,
-        .tm_mday = startTime->dayOfMonth,
-        .tm_hour = startTime->hours,
-        .tm_min = startTime->minutes,
-        .tm_sec = startTime->seconds
-    };
+    currentTime->tm_year = rtcTime.year - 1900;
+    currentTime->tm_mon = rtcTime.month - 1;
+    currentTime->tm_mday = rtcTime.dayOfMonth;
+    currentTime->tm_hour = rtcTime.hours;
+    currentTime->tm_min = rtcTime.minutes;
+    currentTime->tm_sec = rtcTime.seconds;
+    currentTime->tm_isdst = -1;
 
-    struct tm current_tm = {
-        .tm_year = currentTime->year - 1900,
-        .tm_mon = currentTime->month - 1,
-        .tm_mday = currentTime->dayOfMonth,
-        .tm_hour = currentTime->hours,
-        .tm_min = currentTime->minutes,
-        .tm_sec = currentTime->seconds
-    };
+    return true;
+}
 
-    time_t start_epoch = mktime(&start_tm);
-    time_t current_epoch = mktime(&current_tm);
+time_t tm_to_seconds(struct tm *tm_time) {
+    struct tm temp_tm = *tm_time;
+    return mktime(&temp_tm); // Wenn mktime zuverlässig ist, ansonsten eigene Implementierung
+}
 
-    return (uint32_t)(current_epoch - start_epoch);
+int compare_tm(struct tm *tm1, struct tm *tm2) {
+    if (tm1->tm_year != tm2->tm_year)
+        return tm1->tm_year - tm2->tm_year;
+    if (tm1->tm_mon != tm2->tm_mon)
+        return tm1->tm_mon - tm2->tm_mon;
+    if (tm1->tm_mday != tm2->tm_mday)
+        return tm1->tm_mday - tm2->tm_mday;
+    if (tm1->tm_hour != tm2->tm_hour)
+        return tm1->tm_hour - tm2->tm_hour;
+    if (tm1->tm_min != tm2->tm_min)
+        return tm1->tm_min - tm2->tm_min;
+    return tm1->tm_sec - tm2->tm_sec;
 }

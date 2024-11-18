@@ -1,7 +1,11 @@
+/* DS3231.c */
+
 #include "ds3231.h"
-#include <string.h>
-#include "time.h"
+#include "main.h" // Enthält die Deklaration von hi2c2
 #include "logger.h"
+
+// DS3231 I2C-Adresse (Shift erforderlich für STM32)
+#define DS3231_ADDRESS (0x68 << 1)
 
 // Hilfsfunktionen zur BCD-Konvertierung
 static uint8_t BCD_To_Dec(uint8_t val) {
@@ -12,38 +16,13 @@ static uint8_t Dec_To_BCD(uint8_t val) {
     return ((val / 10 * 16) + (val % 10));
 }
 
-time_t ds3231_time_to_timestamp(DS3231_Time *time) {
-    struct tm tm_time;
-    tm_time.tm_year = time->year - 1900;
-    tm_time.tm_mon = time->month - 1;
-    tm_time.tm_mday = time->dayOfMonth;
-    tm_time.tm_hour = time->hours;
-    tm_time.tm_min = time->minutes;
-    tm_time.tm_sec = time->seconds;
-    tm_time.tm_isdst = -1;
-    return mktime(&tm_time);
-}
-
-bool DS3231_SetTime(DS3231_Time *time) {
-    uint8_t buffer[7];
-    buffer[0] = Dec_To_BCD(time->seconds);
-    buffer[1] = Dec_To_BCD(time->minutes);
-    buffer[2] = Dec_To_BCD(time->hours);
-    buffer[3] = Dec_To_BCD(time->dayOfWeek);
-    buffer[4] = Dec_To_BCD(time->dayOfMonth);
-    buffer[5] = Dec_To_BCD(time->month);
-    buffer[6] = Dec_To_BCD(time->year - 2000);  // DS3231 speichert das Jahr als zweistellige Zahl
-
-    if (HAL_I2C_Mem_Write(&hi2c2, DS3231_ADDRESS, 0x00, I2C_MEMADD_SIZE_8BIT, buffer, 7, 1000) != HAL_OK) {
-        return false;
-    }
-    return true;
-}
-
 bool DS3231_GetTime(DS3231_Time *time) {
     uint8_t buffer[7];
 
-    if (HAL_I2C_Mem_Read(&hi2c2, DS3231_ADDRESS, 0x00, I2C_MEMADD_SIZE_8BIT, buffer, 7, 1000) != HAL_OK) {
+    HAL_StatusTypeDef status = HAL_I2C_Mem_Read(&hi2c2, DS3231_ADDRESS, 0x00,
+                                                I2C_MEMADD_SIZE_8BIT, buffer, 7, HAL_MAX_DELAY);
+    if (status != HAL_OK) {
+        LOG_ERROR("DS3231_GetTime: I2C Read Error %d", status);
         return false;
     }
 
@@ -58,13 +37,22 @@ bool DS3231_GetTime(DS3231_Time *time) {
     return true;
 }
 
-time_t get_current_time(void) {
-    DS3231_Time rtc_time;
-    if (DS3231_GetTime(&rtc_time)) {
-        return ds3231_time_to_timestamp(&rtc_time);
-    } else {
-        LOG_ERROR("task_light_controller:\tFailed to get time from RTC");
-        return -1;
-    }
-}
+bool DS3231_SetTime(DS3231_Time *time) {
+    uint8_t buffer[7];
+    buffer[0] = Dec_To_BCD(time->seconds);
+    buffer[1] = Dec_To_BCD(time->minutes);
+    buffer[2] = Dec_To_BCD(time->hours);
+    buffer[3] = Dec_To_BCD(time->dayOfWeek);
+    buffer[4] = Dec_To_BCD(time->dayOfMonth);
+    buffer[5] = Dec_To_BCD(time->month);
+    buffer[6] = Dec_To_BCD(time->year - 2000); // DS3231 speichert das Jahr als zweistellige Zahl
 
+    HAL_StatusTypeDef status = HAL_I2C_Mem_Write(&hi2c2, DS3231_ADDRESS, 0x00,
+                                                 I2C_MEMADD_SIZE_8BIT, buffer, 7, HAL_MAX_DELAY);
+    if (status != HAL_OK) {
+        LOG_ERROR("DS3231_SetTime: I2C Write Error %d", status);
+        return false;
+    }
+
+    return true;
+}

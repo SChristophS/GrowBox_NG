@@ -1,27 +1,27 @@
 /* logger.c */
 
 #include "logger.h"
-#include <time.h>
+#include "time_utils.h"
 #include "globals.h"
 
 /* Initialisiere das aktuelle Logging-Level */
 LogLevel currentLogLevel = LOG_LEVEL_DEBUG;
 
-void log_message(LogLevel level, const char *format, ...)
-{
-	 osMutexAcquire(gLoggerMutexHandle, osWaitForever);
+void log_message(LogLevel level, const char *format, ...) {
+    osMutexAcquire(gLoggerMutexHandle, osWaitForever);
 
     if (level < currentLogLevel) {
+        osMutexRelease(gLoggerMutexHandle);
         return; // Nachricht nicht ausgeben
     }
 
-    /* Zeitstempel hinzufügen */
-    time_t now;
-    time(&now);
-    struct tm *timeinfo = localtime(&now);
-
-    char timeBuffer[20];
-    strftime(timeBuffer, sizeof(timeBuffer), "%H:%M:%S", timeinfo);
+    /* Zeit von der RTC holen */
+    struct tm currentTime;
+    if (get_current_time(&currentTime)) {
+        printf("[%02d:%02d:%02d] ", currentTime.tm_hour, currentTime.tm_min, currentTime.tm_sec);
+    } else {
+        printf("[Unbekannte Zeit] ");
+    }
 
     /* Logging-Level als String */
     const char *levelStrings[] = { "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL" };
@@ -58,7 +58,7 @@ void log_message(LogLevel level, const char *format, ...)
     }
 
     /* Nachricht formatieren */
-    printf("%s[%s] %s: ", color, timeBuffer, levelString);
+    printf("%s%s: ", color, levelString);
 
     /* Variable Argumentliste verarbeiten */
     va_list args;

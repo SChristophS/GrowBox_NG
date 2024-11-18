@@ -11,7 +11,6 @@
 #include "logger.h"
 #include "time_utils.h"
 
-
 bool load_automatic_mode(bool *automaticMode);
 bool save_grow_cycle_config(GrowCycleConfig *config);
 bool save_automatic_mode(bool automaticMode);
@@ -19,7 +18,6 @@ bool save_grow_cycle_start_time(DS3231_Time time);
 bool load_grow_cycle_start_time(DS3231_Time *time);
 void InitializeGrowCycleConfig();
 void print_grow_cycle_config();
-
 
 
 void print_grow_cycle_config() {
@@ -58,11 +56,11 @@ void InitializeGrowCycleConfig(void) {
     bool storedAutomaticMode;
     bool newConfigLoaded;
 
-    time_t startTime;
-    bool timeSynchronized;
+    struct tm startTimeTm;
+    bool timeSynchronized = false;
 
     // Beim Laden wird der Inhalt automatisch in die globale Variable gGrowCycleConfig kopiert
-    if (load_grow_cycle_config(&storedConfig, &startTime, &timeSynchronized)) {
+    if (load_grow_cycle_config(&storedConfig, &startTimeTm, &timeSynchronized)) {
         LOG_INFO("state_manager.c:\t Loaded GrowCycleConfig from EEPROM");
         newConfigLoaded = true;
     } else {
@@ -162,7 +160,7 @@ bool save_grow_cycle_config(GrowCycleConfig *config) {
 
 bool load_automatic_mode(bool *automaticMode) {
     uint16_t address = EEPROM_AUTOMATIC_MODE_ADDR;
-    printf("task_state_manager.c: Loading automaticMode from EEPROM at address 0x%04X\r\n", address);
+    LOG_INFO("state_manager.c: Loading automaticMode from EEPROM at address 0x%04X\r\n", address);
 
     osMutexAcquire(gEepromMutexHandle, osWaitForever);
     if (!EEPROM_Read(address, (uint8_t *)automaticMode, sizeof(bool))) {
@@ -172,7 +170,7 @@ bool load_automatic_mode(bool *automaticMode) {
     }
     osMutexRelease(gEepromMutexHandle);
 
-    printf("task_state_manager.c: automaticMode loaded successfully\r\n");
+    LOG_INFO("state_manager.c: automaticMode loaded successfully\r\n");
     return true;
 }
 
@@ -209,13 +207,13 @@ bool save_automatic_mode(bool automaticMode) {
     return true;
 }
 
-bool load_grow_cycle_config(GrowCycleConfig *config, time_t *startTime, bool *timeSynchronized) {
-    if (config == NULL || startTime == NULL || timeSynchronized == NULL) {
+bool load_grow_cycle_config(GrowCycleConfig *config, struct tm *startTimeTm, bool *timeSynchronized) {
+	if (config == NULL || startTimeTm == NULL || timeSynchronized == NULL) {
         printf("state_manager.c: load_grow_cycle_config - Invalid pointer(s)\r\n");
         return false;
     }
 
-    printf("state_manager.c: Loading GrowCycleConfig from EEPROM at address 0x%04X\r\n", EEPROM_GROW_CYCLE_CONFIG_ADDR);
+    LOG_INFO("state_manager.c: Loading GrowCycleConfig from EEPROM at address 0x%04X\r\n", EEPROM_GROW_CYCLE_CONFIG_ADDR);
 
     // Lese die Konfiguration aus dem EEPROM
     if (!EEPROM_Read(EEPROM_GROW_CYCLE_CONFIG_ADDR, (uint8_t *)config, sizeof(GrowCycleConfig))) {
@@ -226,43 +224,35 @@ bool load_grow_cycle_config(GrowCycleConfig *config, time_t *startTime, bool *ti
     // Startzeit aus startGrowTime parsen
     struct tm start_tm;
     if (parse_iso8601_datetime(config->startGrowTime, &start_tm)) {
-        *startTime = mktime(&start_tm);
-        if (*startTime == -1)
-        {
-            printf("state_manager.c: Failed to convert startGrowTime to time_t\r\n");
-            *timeSynchronized = false;
-        }
-        else
-        {
-            *timeSynchronized = true;
-            printf("state_manager.c: Parsed startGrowTime successfully\r\n");
-        }
+        // Kopiere den geparsten Zeitstempel in startTimeTm
+        memcpy(startTimeTm, &start_tm, sizeof(struct tm));
+        *timeSynchronized = true;
+        LOG_INFO("state_manager.c:\tParsed startGrowTime successfully");
     } else {
-        printf("state_manager.c: Failed to parse startGrowTime\r\n");
+        LOG_ERROR("state_manager.c:\tFailed to parse startGrowTime");
         *timeSynchronized = false;
     }
 
+
     // Debug-Ausgaben des geladenen Konfigurationsinhalts
-    printf("task_state_manager.c: GrowCycleConfig loaded successfully\r\n");
-    printf("task_state_manager.c: startFromHere: %s\r\n", config->startGrowTime);
-    printf("task_state_manager.c: LED Schedule Count: %d\r\n", config->ledScheduleCount);
+    LOG_INFO("state_manager.c: GrowCycleConfig loaded successfully");
+    LOG_INFO("state_manager.c: startFromHere: %s", config->startGrowTime);
+    LOG_INFO("state_manager.c LED Schedule Count: %d", config->ledScheduleCount);
 
     for (uint8_t i = 0; i < config->ledScheduleCount; i++) {
         LedSchedule *schedule = &config->ledSchedules[i];
-        printf("task_state_manager.c: LED Schedule %d: durationOn=%lu s, durationOff=%lu s, repetition=%d\r\n",
+        LOG_INFO("state_manager.c: LED Schedule %d: durationOn=%lu s, durationOff=%lu s, repetition=%d",
                i, (unsigned long)schedule->durationOn, (unsigned long)schedule->durationOff, schedule->repetition);
     }
 
     // Ähnliche Debug-Ausgaben für andere Zeitpläne (z.B. Bewässerungspläne)
-    printf("task_state_manager.c: Watering Schedule Count: %d\r\n", config->wateringScheduleCount);
+    LOG_INFO("state_manager.c: Watering Schedule Count: %d\r\n", config->wateringScheduleCount);
 
     for (uint8_t i = 0; i < config->wateringScheduleCount; i++) {
         WateringSchedule *schedule = &config->wateringSchedules[i];
-        printf("task_state_manager.c: Watering Schedule %d: duration_full=%lu s, duration_empty=%lu s, repetition=%d\r\n",
+        LOG_INFO("state_manager.c: Watering Schedule %d: duration_full=%lu s, duration_empty=%lu s, repetition=%d",
                i, (unsigned long)schedule->duration_full, (unsigned long)schedule->duration_empty, schedule->repetition);
     }
-
-    printf("task_state_manager.c: Set flag that new GrowCycle is available\r\n");
 
     // Konfiguration in die globale Variable kopieren
     osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);

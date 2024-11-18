@@ -11,13 +11,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "time_utils.h"
 
 // Funktionsprototypen
 void UpdateLightControllerState(uint8_t lightIntensity);
 void ControlLight(uint8_t lightIntensity);
 void achieve_light_intensity(uint8_t intensity);
 bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time);
-time_t get_current_time(void);
+time_t get_current_timestamp(void);
+bool wait_for_start_time(struct tm *startTimeTm);
 
 void adjust_schedule_based_on_elapsed_time(
     LedSchedule *ledSchedules,
@@ -42,9 +44,8 @@ void adjust_schedule_for_elapsed_time(
     bool *finished);
 
 // Neue Hilfsfunktionen
-bool load_grow_cycle_config(GrowCycleConfig *growConfig, time_t *startTime, bool *timeSynchronized);
 void handle_manual_override(LightCommand *receivedCommand, bool *manualOverride, uint8_t *manualDesiredIntensity);
-bool wait_for_start_time(time_t startTime);
+
 void process_light_schedule(
     GrowCycleConfig *growConfig,
     uint8_t *scheduleIndex,
@@ -78,12 +79,12 @@ void StartLightTask(void *argument)
     uint8_t manualDesiredIntensity = 0;
 
     // Variablen für die Zeitsteuerung
-    time_t startTime;
+    struct tm startTimeTm;
     bool timeSynchronized = false;
     bool scheduleAdjusted = false;
 
     // 1. Konfiguration laden und Startzeit parsen
-    configLoaded = load_grow_cycle_config(&growConfig, &startTime, &timeSynchronized);
+    configLoaded = load_grow_cycle_config(&growConfig, &startTimeTm, &timeSynchronized);
 
     for (;;)
     {
@@ -103,7 +104,7 @@ void StartLightTask(void *argument)
         if (flags > 0 && (flags & NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT))
         {
             // Neue Konfiguration laden
-            configLoaded = load_grow_cycle_config(&growConfig, &startTime, &timeSynchronized);
+        	configLoaded = load_grow_cycle_config(&growConfig, &startTimeTm, &timeSynchronized);
             finished = false;
             scheduleIndex = 0;
             repetitionIndex = 0;
@@ -128,38 +129,38 @@ void StartLightTask(void *argument)
         // 5. Warten bis Startzeit erreicht ist
         if (timeSynchronized && !scheduleAdjusted)
         {
-            if (!wait_for_start_time(startTime))
-            {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                continue;
-            }
+        	if (!wait_for_start_time(&startTimeTm)) {
+        	    vTaskDelay(pdMS_TO_TICKS(1000));
+        	    continue;
+        	}
 
             // 6. Zeitplan anpassen basierend auf verstrichener Zeit
-            if (timeSynchronized && !scheduleAdjusted)
-            {
-                time_t currentTime = get_current_time();
-                if (currentTime == -1)
-                {
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                    continue;
-                }
+        	struct tm currentTimeTm;
+        	if (!get_current_time(&currentTimeTm)) {
+        	    vTaskDelay(pdMS_TO_TICKS(1000));
+        	    continue;
+        	}
 
-                time_t elapsedTime = currentTime - startTime;
+        	time_t currentSeconds = tm_to_seconds(&currentTimeTm);
+        	time_t startSeconds = tm_to_seconds(&startTimeTm);
+        	time_t elapsedTime = currentSeconds - startSeconds;
 
-                adjust_schedule_based_on_elapsed_time(
-                    growConfig.ledSchedules,
-                    growConfig.ledScheduleCount,
-                    elapsedTime,
-                    &scheduleIndex,
-                    &repetitionIndex,
-                    &currentState,
-                    &phaseDuration,
-                    &phaseStartTime,
-                    &finished
-                );
-                scheduleAdjusted = true;
-            }
+
+
+            adjust_schedule_based_on_elapsed_time(
+                growConfig.ledSchedules,
+                growConfig.ledScheduleCount,
+                elapsedTime,
+                &scheduleIndex,
+                &repetitionIndex,
+                &currentState,
+                &phaseDuration,
+                &phaseStartTime,
+                &finished
+            );
+            scheduleAdjusted = true;
         }
+
 
         // 7. Automatikmodus prüfen
         osMutexAcquire(gAutomaticModeHandle, osWaitForever);
@@ -211,22 +212,37 @@ void handle_manual_override(LightCommand *receivedCommand, bool *manualOverride,
 }
 
 // 5. Warten bis Startzeit erreicht ist
-bool wait_for_start_time(time_t startTime)
+bool wait_for_start_time(struct tm *startTimeTm)
 {
-    time_t currentTime = get_current_time();
-    if (currentTime == -1)
-    {
+    struct tm currentTimeTm;
+    if (!get_current_time(&currentTimeTm)) {
+        LOG_ERROR("task_light_controller: Failed to get current time");
         return false;
     }
 
-    if (currentTime < startTime)
-    {
+    // Vergleiche aktuelle Zeit mit Startzeit
+    int cmp = compare_tm(&currentTimeTm, startTimeTm);
+
+    char currentTimeStr[20];
+    char startTimeStr[20];
+    strftime(currentTimeStr, sizeof(currentTimeStr), "%Y-%m-%d %H:%M:%S", &currentTimeTm);
+    strftime(startTimeStr, sizeof(startTimeStr), "%Y-%m-%d %H:%M:%S", startTimeTm);
+
+    LOG_INFO("task_light_controller:\tcurrentTime: %s", currentTimeStr);
+    LOG_INFO("task_light_controller:\tstartTime:   %s", startTimeStr);
+    LOG_INFO("task_light_controller:\tComparison result: %d", cmp);
+
+    if (cmp < 0) {
         LOG_INFO("task_light_controller:\tCurrent time is before start time. Waiting...");
         return false;
     }
 
     return true;
 }
+
+
+
+
 
 // 6. Zeitplan anpassen basierend auf verstrichener Zeit
 void adjust_schedule_based_on_elapsed_time(
@@ -242,6 +258,8 @@ void adjust_schedule_based_on_elapsed_time(
 ) {
     time_t accumulatedTime = 0;
 
+    LOG_DEBUG("task_light_controller:\telapsedTime: %ld seconds", elapsedTime);
+
     // Durchlaufen aller Zeitpläne
     for (uint8_t i = 0; i < ledScheduleCount; i++) {
         LedSchedule *schedule = &ledSchedules[i];
@@ -254,6 +272,10 @@ void adjust_schedule_based_on_elapsed_time(
 
             // Gesamtdauer dieser Wiederholung
             time_t repetitionDuration = onDuration + offDuration;
+
+            LOG_DEBUG("task_light_controller:\tChecking Schedule %d, Repetition %d", i, rep);
+            LOG_DEBUG("task_light_controller:\tAccumulated Time: %ld seconds", accumulatedTime);
+            LOG_DEBUG("task_light_controller:\tRepetition Duration: %ld seconds", repetitionDuration);
 
             if (elapsedTime < accumulatedTime + repetitionDuration) {
                 // Wir befinden uns innerhalb dieser Wiederholung
@@ -286,6 +308,7 @@ void adjust_schedule_based_on_elapsed_time(
     *finished = true;
     LOG_INFO("task_light_controller:\tAll schedules are finished based on elapsed time");
 }
+
 
 
 void adjust_schedule_for_elapsed_time(LedSchedule *ledSchedules, uint8_t ledScheduleCount, time_t elapsedTime, uint8_t *scheduleIndex, uint8_t *repetitionIndex, LightState *currentState, uint32_t *phaseDuration, uint32_t *phaseStartTime, bool *finished) {
@@ -430,3 +453,15 @@ void achieve_light_intensity(uint8_t intensity)
     ControlLight(intensity);
 // Restliche Funktionen (parse_iso8601_datetime, get_current_time, etc.) bleiben wie zuvor oder können ebenfalls vereinfacht werden.
 };
+
+
+time_t get_current_timestamp(void)
+{
+    struct tm currentTimeTm;
+    if (!get_current_time(&currentTimeTm)) {
+        LOG_ERROR("task_light_controller:\tFailed to get current time");
+        return -1;
+    }
+
+    return mktime(&currentTimeTm);
+}

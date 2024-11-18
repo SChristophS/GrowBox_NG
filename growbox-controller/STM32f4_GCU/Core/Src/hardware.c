@@ -8,7 +8,6 @@
 #include "task_hardware.h"
 #include "stm32f4xx_hal.h"
 
-
 void EnablePump(uint8_t pumpId)
 {
     if (pumpId == PUMP_ABLAUF) {
@@ -46,7 +45,6 @@ void DisablePump(uint8_t pumpId)
         HAL_GPIO_WritePin(PUMP2_IN2_GPIO_Port, PUMP2_IN2_Pin, GPIO_PIN_RESET);
     }
 }
-
 
 void PWM_SetDutyCycle(TIM_HandleTypeDef *htim, uint32_t Channel, uint16_t DutyCycle)
 {
