@@ -35,7 +35,10 @@
 #define LIGHT_INTENSITY_CHANGED_BIT (1 << 5)
 #define READY_FOR_AUTORUN_STATE_CHANGED_BIT (1 << 6)
 #define WATER_STATE_CHANGED_BIT (1 << 7)
-#define NEW_GROW_CYCLE_CONFIG_AVAILABLE  (1 << 8)
+#define NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT  (1 << 8)
+#define NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER  (1 << 9)
+#define INITIALIZATION_COMPLETE          (1 << 10)
+
 
 /* Netzwerk-Einstellungen */
 #define MY_IP          {192, 168, 178, 100}
@@ -48,6 +51,8 @@
 // Globale Variablen
 extern ControllerState gControllerState;
 extern GrowCycleConfig gGrowCycleConfig;
+
+/* TODO the name should be gAutomaticMode */
 extern bool automaticMode;
 
 extern char uidStr[25];
@@ -57,7 +62,10 @@ extern osMutexId_t gControllerStateMutexHandle;
 extern osMutexId_t gGrowCycleConfigMutexHandle;
 extern osMutexId_t gAutomaticModeHandle;
 extern osMutexId_t gEepromMutexHandle;
+extern osMutexId_t gLoggerMutexHandle;
 extern osEventFlagsId_t gControllerEventGroupHandle;
+extern osEventFlagsId_t INITIALIZATION_COMPLETEHandle;
+
 
 // Queues
 extern osMessageQueueId_t xWaterControllerQueueHandle;
@@ -66,10 +74,6 @@ extern osMessageQueueId_t xWebSocketQueueHandle;
 extern osMessageQueueId_t xHardwareQueueHandle;
 extern osMessageQueueId_t xWaterCommandQueueHandle;
 extern osMessageQueueId_t xLightCommandQueueHandle;
-
-
-
-
 
 
 

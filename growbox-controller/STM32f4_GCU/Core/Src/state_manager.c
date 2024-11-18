@@ -9,6 +9,7 @@
 #include "controller_state.h"
 #include "main.h"
 #include "globals.h"
+#include "logger.h"
 
 
 bool load_automatic_mode(bool *automaticMode);
@@ -51,47 +52,50 @@ void print_grow_cycle_config() {
 }
 
 void InitializeGrowCycleConfig() {
-    printf("task_state_manager.c: Initialize Grow Configuration\r\n");
+    LOG_INFO("state_manager.c:\t Initialize Grow Configuration");
 
+    // create necesarry variables
     GrowCycleConfig storedConfig;
     bool storedAutomaticMode;
     bool newConfigLoaded;
 
+    // beim laden wird der Inhalt automatisch in die globale variable gGrowCycleConfig kopiert
+    // beim laden wird das flag NEW_GROW_CYCLE_CONFIG_AVAILABLE gesetzt
     if (load_grow_cycle_config(&storedConfig)) {
-        printf("task_state_manager.c: Loaded GrowCycleConfig from EEPROM\r\n");
+        LOG_INFO("state_manager.c:\t Loaded GrowCycleConfig from EEPROM");
         newConfigLoaded = true;
     } else {
-        printf("task_state_manager.c: Failed to load GrowCycleConfig, initializing with default values\r\n");
+        LOG_WARN("state_manager.c:\t Failed to load GrowCycleConfig, initializing with default values");
         newConfigLoaded = false;
 
-        // Globale Konfiguration mit Standardwerten initialisieren
         osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
         memset(&gGrowCycleConfig, 0, sizeof(GrowCycleConfig));
         osMutexRelease(gGrowCycleConfigMutexHandle);
     }
 
     if (load_automatic_mode(&storedAutomaticMode)) {
-        // **Hier weisen wir den geladenen Wert zu**
         osMutexAcquire(gAutomaticModeHandle, osWaitForever);
         automaticMode = storedAutomaticMode;
         osMutexRelease(gAutomaticModeHandle);
-        printf("task_state_manager.c: Loaded automaticMode: %s\r\n", automaticMode ? "ON" : "OFF");
+        LOG_INFO("state_manager.c:\t Loaded automaticMode: %s", automaticMode ? "ON" : "OFF");
     } else {
-        // Falls Laden fehlschlägt, setzen wir einen Standardwert
         osMutexAcquire(gAutomaticModeHandle, osWaitForever);
         automaticMode = false;
         osMutexRelease(gAutomaticModeHandle);
-        printf("task_state_manager.c: Failed to load automaticMode, defaulting to OFF\r\n");
+        LOG_WARN("state_manager.c:\t Failed to load automaticMode, defaulting to OFF");
     }
 
     print_grow_cycle_config();
 
     if (newConfigLoaded){
-        // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
-        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+		LOG_INFO("state_manager.c:\t New Configuration is loaded, set Flag");
+        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
+        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
     }
-}
 
+    // Setze das Initialisierungs-Event-Flag
+    LOG_INFO("state_manager.c:\t Initialization complete");
+}
 
 bool save_grow_cycle_config(GrowCycleConfig *config) {
     if (config == NULL) {
@@ -146,7 +150,8 @@ bool save_grow_cycle_config(GrowCycleConfig *config) {
     osMutexRelease(gGrowCycleConfigMutexHandle);
 
     // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
-    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
 
 
     printf("task_state_manager.c: Size of GrowCycleConfig: %lu bytes\r\n", (unsigned long)sizeof(GrowCycleConfig));
@@ -170,7 +175,6 @@ bool load_automatic_mode(bool *automaticMode) {
     printf("task_state_manager.c: automaticMode loaded successfully\r\n");
     return true;
 }
-
 
 bool save_automatic_mode(bool automaticMode) {
     osMutexAcquire(gEepromMutexHandle, osWaitForever);
@@ -204,7 +208,6 @@ bool save_automatic_mode(bool automaticMode) {
     printf("task_state_manager.c: automaticMode saved and verified successfully\r\n");
     return true;
 }
-
 
 bool load_grow_cycle_config(GrowCycleConfig *config) {
     if (config == NULL) {
@@ -253,7 +256,8 @@ bool load_grow_cycle_config(GrowCycleConfig *config) {
     osMutexRelease(gGrowCycleConfigMutexHandle);
 
     // Event-Flag setzen, um Tasks über die neue Konfiguration zu informieren
-    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
+    osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
 
     return true;
 }

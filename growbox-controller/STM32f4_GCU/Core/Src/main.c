@@ -244,6 +244,14 @@ const osMutexAttr_t gEepromMutex_attributes = {
   .cb_mem = &gEepromMutexControlBlock,
   .cb_size = sizeof(gEepromMutexControlBlock),
 };
+/* Definitions for gLoggerMutex */
+osMutexId_t gLoggerMutexHandle;
+osStaticMutexDef_t gLoggerMutexControlBlock;
+const osMutexAttr_t gLoggerMutex_attributes = {
+  .name = "gLoggerMutex",
+  .cb_mem = &gLoggerMutexControlBlock,
+  .cb_size = sizeof(gLoggerMutexControlBlock),
+};
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
 osStaticEventGroupDef_t gControllerEventGroupControlBlock;
@@ -251,6 +259,14 @@ const osEventFlagsAttr_t gControllerEventGroup_attributes = {
   .name = "gControllerEventGroup",
   .cb_mem = &gControllerEventGroupControlBlock,
   .cb_size = sizeof(gControllerEventGroupControlBlock),
+};
+/* Definitions for INITIALIZATION_COMPLETE */
+osEventFlagsId_t INITIALIZATION_COMPLETEHandle;
+osStaticEventGroupDef_t INITIALIZATION_COMPLETEControlBlock;
+const osEventFlagsAttr_t INITIALIZATION_COMPLETE_attributes = {
+  .name = "INITIALIZATION_COMPLETE",
+  .cb_mem = &INITIALIZATION_COMPLETEControlBlock,
+  .cb_size = sizeof(INITIALIZATION_COMPLETEControlBlock),
 };
 /* USER CODE BEGIN PV */
 
@@ -382,6 +398,9 @@ int main(void)
   /* creation of gEepromMutex */
   gEepromMutexHandle = osMutexNew(&gEepromMutex_attributes);
 
+  /* creation of gLoggerMutex */
+  gLoggerMutexHandle = osMutexNew(&gLoggerMutex_attributes);
+
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
@@ -461,6 +480,9 @@ int main(void)
 
   /* creation of gControllerEventGroup */
   gControllerEventGroupHandle = osEventFlagsNew(&gControllerEventGroup_attributes);
+
+  /* creation of INITIALIZATION_COMPLETE */
+  INITIALIZATION_COMPLETEHandle = osEventFlagsNew(&INITIALIZATION_COMPLETE_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
 
@@ -953,6 +975,8 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+
 
 /**
   * @brief  Period elapsed callback in non blocking mode

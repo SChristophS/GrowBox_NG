@@ -7,33 +7,7 @@
 #include "uart_redirect.h"
 #include "task_hardware.h"
 #include "stm32f4xx_hal.h"
-//
-//void EnablePump(uint8_t pumpId)
-//{
-//    if (pumpId == PUMP_ZULAUF) {
-//    	printf("hardware.c: Enable pump with deviceID %d == PUMP_ZULAUF\r\n", pumpId);
-//        HAL_GPIO_WritePin(PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, GPIO_PIN_SET);
-//
-//    } else if (pumpId == PUMP_ABLAUF) {
-//    	printf("hardware.c: Enable pump with deviceID %d == PUMP_ABLAUF\r\n", pumpId);
-//        HAL_GPIO_WritePin(PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, GPIO_PIN_SET);
-//        // Weitere Pins setzen, falls nötig
-//    }
-//}
-//
-//void DisablePump(uint8_t pumpId)
-//{
-//    if (pumpId == PUMP_ZULAUF) {
-//    	printf("hardware.c: Disable pump with deviceID %d == PUMP_ZULAUF\r\n", pumpId);
-//        HAL_GPIO_WritePin(PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, GPIO_PIN_RESET);
-//        // Weitere Pins zurücksetzen, falls nötig
-//    } else if (pumpId == PUMP_ABLAUF) {
-//    	printf("hardware.c: Disable pump with deviceID %d == PUMP_ZULAUF\r\n", pumpId);
-//    	HAL_GPIO_WritePin(PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, GPIO_PIN_RESET);
-//
-//        // Weitere Pins zurücksetzen, falls nötig
-//    }
-//}
+
 
 void EnablePump(uint8_t pumpId)
 {

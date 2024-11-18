@@ -11,6 +11,7 @@
 #include "globals.h"
 #include "task_hardware.h"
 #include <string.h>
+#include "logger.h"
 
 extern osMessageQueueId_t xWaterCommandQueueHandle;
 
@@ -142,6 +143,8 @@ void StartWaterControllerTask(void *argument)
 {
     printf("task_water_controller.c: Starting Water Controller Task\r\n");
 
+    LOG_INFO("Starting Water Controller Task");
+
     GrowCycleConfig growConfig;
     bool configLoaded = false;
     bool finished = false;
@@ -198,8 +201,8 @@ void StartWaterControllerTask(void *argument)
         // Überprüfen, ob eine Konfiguration geladen ist
         if (!configLoaded || finished) {
             // Nicht-blockierendes Warten auf neue Konfiguration
-            uint32_t flags = osEventFlagsWait(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE, osFlagsWaitAny | osFlagsNoClear, 0);
-            if (flags & NEW_GROW_CYCLE_CONFIG_AVAILABLE) {
+            uint32_t flags = osEventFlagsWait(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER, osFlagsWaitAny, 0);
+            if (flags & NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER) {
                 // Neue Konfiguration laden
                 osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
                 memcpy(&growConfig, &gGrowCycleConfig, sizeof(GrowCycleConfig));
