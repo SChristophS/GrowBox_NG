@@ -253,6 +253,22 @@ const osMutexAttr_t gLoggerMutex_attributes = {
   .cb_mem = &gLoggerMutexControlBlock,
   .cb_size = sizeof(gLoggerMutexControlBlock),
 };
+/* Definitions for gConfigAvailableMutex */
+osMutexId_t gConfigAvailableMutexHandle;
+osStaticMutexDef_t gConfigAvailableMutexControlBlock;
+const osMutexAttr_t gConfigAvailableMutex_attributes = {
+  .name = "gConfigAvailableMutex",
+  .cb_mem = &gConfigAvailableMutexControlBlock,
+  .cb_size = sizeof(gConfigAvailableMutexControlBlock),
+};
+/* Definitions for gStartTimeMutex */
+osMutexId_t gStartTimeMutexHandle;
+osStaticMutexDef_t gStartTimeMutexControlBlock;
+const osMutexAttr_t gStartTimeMutex_attributes = {
+  .name = "gStartTimeMutex",
+  .cb_mem = &gStartTimeMutexControlBlock,
+  .cb_size = sizeof(gStartTimeMutexControlBlock),
+};
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
 osStaticEventGroupDef_t gControllerEventGroupControlBlock;
@@ -276,8 +292,9 @@ ControllerState gControllerState;
 GrowCycleConfig gGrowCycleConfig;
 char uidStr[25];
 bool automaticMode;
-
-
+bool gConfigAvailable;
+struct tm gStartTimeTm;
+bool gTimeSynchronized;
 
 /* USER CODE END PV */
 
@@ -403,6 +420,12 @@ int main(void)
   /* creation of gLoggerMutex */
   gLoggerMutexHandle = osMutexNew(&gLoggerMutex_attributes);
 
+  /* creation of gConfigAvailableMutex */
+  gConfigAvailableMutexHandle = osMutexNew(&gConfigAvailableMutex_attributes);
+
+  /* creation of gStartTimeMutex */
+  gStartTimeMutexHandle = osMutexNew(&gStartTimeMutex_attributes);
+
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
@@ -519,6 +542,8 @@ int main(void)
 	printf("main.c:\t - Error: Failed to create HardwareTaskHandle\r\n");
     Error_Handler();
   }
+
+  LOG_INFO("main.c:\t check done");
 
 
 
@@ -978,7 +1003,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
-
 
 
 /**

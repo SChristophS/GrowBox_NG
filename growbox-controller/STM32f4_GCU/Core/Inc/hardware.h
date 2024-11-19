@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal_def.h"
+
 
 extern TIM_HandleTypeDef htim10;
 
@@ -17,7 +19,9 @@ extern TIM_HandleTypeDef htim10;
 
 void EnablePump(uint8_t pumpId);
 void DisablePump(uint8_t pumpId);
-void SetLightIntensity(uint8_t intensity);
+HAL_StatusTypeDef SetLightIntensity(uint8_t intensity);
+HAL_StatusTypeDef PWM_SetDutyCycle(TIM_HandleTypeDef *htim, uint32_t Channel, uint16_t DutyCycle);
+
 
 bool ReadSensorOben(void);
 bool ReadSensorUnten(void);

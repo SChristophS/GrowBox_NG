@@ -52,17 +52,27 @@ void print_grow_cycle_config() {
 void InitializeGrowCycleConfig(void) {
     LOG_INFO("state_manager.c:\t Initialize Grow Configuration");
 
-    GrowCycleConfig storedConfig;
     bool storedAutomaticMode;
     bool newConfigLoaded;
 
+    // Variablen für Startzeit und Synchronisation
     struct tm startTimeTm;
     bool timeSynchronized = false;
 
-    // Beim Laden wird der Inhalt automatisch in die globale Variable gGrowCycleConfig kopiert
-    if (load_grow_cycle_config(&storedConfig, &startTimeTm, &timeSynchronized)) {
+    if (load_grow_cycle_config(&gGrowCycleConfig, &startTimeTm, &timeSynchronized)) {
         LOG_INFO("state_manager.c:\t Loaded GrowCycleConfig from EEPROM");
         newConfigLoaded = true;
+
+        // Setze die Verfügbarkeitsvariable
+        osMutexAcquire(gConfigAvailableMutexHandle, osWaitForever);
+        gConfigAvailable = true;
+        osMutexRelease(gConfigAvailableMutexHandle);
+
+        // Speichere startTimeTm und timeSynchronized in globalen Variablen
+        osMutexAcquire(gStartTimeMutexHandle, osWaitForever);
+        memcpy(&gStartTimeTm, &startTimeTm, sizeof(struct tm));
+        gTimeSynchronized = timeSynchronized;
+        osMutexRelease(gStartTimeMutexHandle);
     } else {
         LOG_WARN("state_manager.c:\t Failed to load GrowCycleConfig, initializing with default values");
         newConfigLoaded = false;
@@ -70,6 +80,10 @@ void InitializeGrowCycleConfig(void) {
         osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
         memset(&gGrowCycleConfig, 0, sizeof(GrowCycleConfig));
         osMutexRelease(gGrowCycleConfigMutexHandle);
+
+        osMutexAcquire(gConfigAvailableMutexHandle, osWaitForever);
+        gConfigAvailable = false;
+        osMutexRelease(gConfigAvailableMutexHandle);
     }
 
     if (load_automatic_mode(&storedAutomaticMode)) {
@@ -87,9 +101,9 @@ void InitializeGrowCycleConfig(void) {
     print_grow_cycle_config();
 
     if (newConfigLoaded){
-        LOG_INFO("state_manager.c:\t New Configuration is loaded, set Flag");
-        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
-        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
+        LOG_INFO("state_manager.c:\t THIS IS DEACTIVATED: New Configuration is loaded, set Flag");
+        //osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER);
+        //osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_LIGHT);
     }
 
     LOG_INFO("state_manager.c:\t Initialization complete");
@@ -258,6 +272,11 @@ bool load_grow_cycle_config(GrowCycleConfig *config, struct tm *startTimeTm, boo
     osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
     memcpy(&gGrowCycleConfig, config, sizeof(GrowCycleConfig));
     osMutexRelease(gGrowCycleConfigMutexHandle);
+
+    // set gConfigAvailable to true
+    osMutexAcquire(gConfigAvailableMutexHandle, osWaitForever);
+    gConfigAvailable = true;
+    osMutexRelease(gConfigAvailableMutexHandle);
 
     return true;
 }

@@ -5,13 +5,11 @@
 #include "schedules.h"
 #include "cmsis_os.h" // Für RTOS-Typen
 
-// Define message types
-#define MESSAGE_TYPE_REGISTER 1
-#define MESSAGE_TYPE_UPDATE 2
-
-// Define devices
-#define DEVICE_CONTROLLER 1
-#define DEVICE_FRONTEND 2
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <inttypes.h>
 
 // Define targets
 #define TARGET_WATER_LEVEL 1
@@ -54,8 +52,12 @@ extern GrowCycleConfig gGrowCycleConfig;
 
 /* TODO the name should be gAutomaticMode */
 extern bool automaticMode;
+extern bool gConfigAvailable;
 
 extern char uidStr[25];
+
+extern struct tm gStartTimeTm;
+extern bool gTimeSynchronized;
 
 // Mutexe und Event-Gruppen
 extern osMutexId_t gControllerStateMutexHandle;
@@ -63,6 +65,9 @@ extern osMutexId_t gGrowCycleConfigMutexHandle;
 extern osMutexId_t gAutomaticModeHandle;
 extern osMutexId_t gEepromMutexHandle;
 extern osMutexId_t gLoggerMutexHandle;
+extern osMutexId_t gConfigAvailableMutexHandle;
+extern osMutexId_t gStartTimeMutexHandle;
+
 extern osEventFlagsId_t gControllerEventGroupHandle;
 extern osEventFlagsId_t INITIALIZATION_COMPLETEHandle;
 
@@ -76,14 +81,6 @@ extern osMessageQueueId_t xWaterCommandQueueHandle;
 extern osMessageQueueId_t xLightCommandQueueHandle;
 
 
-
-typedef struct {
-    uint8_t message_type;
-    uint8_t device;
-    uint8_t target;
-    uint8_t action;
-    uint16_t value;
-} MessageForWebSocket;
 
 typedef enum {
     PHASE_FULL,

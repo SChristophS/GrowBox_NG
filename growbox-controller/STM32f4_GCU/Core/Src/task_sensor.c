@@ -8,8 +8,14 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "globals.h"
+#include "helper_websocket.h"
+#include "message_types.h"
+
+#include "task_network.h"
+#include "message_types.h"
 
 #define SENSOR_TASK_PERIOD_MS 500 // Leseintervall in Millisekunden
+
 
 void StartSensorTask(void *argument)
 {
@@ -24,6 +30,8 @@ void StartSensorTask(void *argument)
         printf("task_sensor.c: currentSensorOben: %i\r\n", currentSensorOben);
         printf("task_sensor.c: currentSensorUnten: %i\r\n", currentSensorUnten);
 
+        bool WaterSensorObenValueChanged = false;
+        bool WaterSensorUntenValueChanged = false;
         bool WaterSensorValueChanged = false;
 
         osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
@@ -31,11 +39,13 @@ void StartSensorTask(void *argument)
         // Überprüfe, ob sich die Sensorwerte geändert haben
         if (gControllerState.sensorOben != currentSensorOben) {
             gControllerState.sensorOben = currentSensorOben;
+            WaterSensorObenValueChanged = true;
             WaterSensorValueChanged = true;
         }
 
         if (gControllerState.sensorUnten != currentSensorUnten) {
             gControllerState.sensorUnten = currentSensorUnten;
+            WaterSensorUntenValueChanged = true;
             WaterSensorValueChanged = true;
         }
 
@@ -43,6 +53,16 @@ void StartSensorTask(void *argument)
 
         if (WaterSensorValueChanged) {
             printf("task_sensor.c: Water sensor values changed\r\n");
+
+            if (WaterSensorObenValueChanged){
+            	// Sende Statusnachricht für sensorOben
+            	send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_SENSOR_OBEN, currentSensorOben);
+            }
+
+            if (WaterSensorUntenValueChanged){
+            	// Sende Statusnachricht für sensorUnten
+            	send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_SENSOR_UNTEN, currentSensorUnten);
+            }
 
             // Setze Event, um andere Tasks zu benachrichtigen
             osEventFlagsSet(gControllerEventGroupHandle, WATER_SENSOR_VALUES_CHANGED_BIT);

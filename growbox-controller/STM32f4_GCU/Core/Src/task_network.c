@@ -13,7 +13,7 @@
 #include "state_manager.h"
 #include "ds3231.h"
 #include "eeprom.h"
-#include "schedules.h"
+
 #include "cJSON.h"
 #include "time_utils.h"
 #include "sha1.h"
@@ -26,34 +26,102 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+#include "message_types.h"
+
+#define EEPROM_SIZE 32768 // Größe des AT24C256 in Bytes
+
+/* Funktionsprototypen */
+
+/* Hauptfunktion der Netzwerkaufgabe */
+void StartNetworkTask(void *argument);
+
+/* Initialisiert das Netzwerk */
+void network_init(void);
+
+/* Überprüft den Socket-Status und führt entsprechende Aktionen aus */
+void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected);
+
+/* Führt den WebSocket-Handschlag durch */
+bool websocket_handshake(uint8_t sock);
+
+/* Verarbeitet ausgehende WebSocket-Nachrichten */
+void process_websocket_messages(uint8_t sock);
+
+/* Sendet eine WebSocket-Nachricht */
+void send_websocket_message(uint8_t sock, MessageForWebSocket *message);
+
+/* Verarbeitet empfangene WebSocket-Daten */
+void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size);
+
+/* Verarbeitet empfangene JSON-Daten */
+void process_received_data(const char *json_payload);
+
+/* Handhabt eine TimeSync-Nachricht */
+void handle_timesync_message(cJSON *root);
+
+/* Handhabt eine StatusRequest-Nachricht */
+void handle_status_request(cJSON *root);
+
+/* Handhabt eine EraseEEPROM-Nachricht */
+void handle_erase_eeprom_message(void);
+
+/* Sendet die GrowCycle-Konfiguration */
+void send_grow_cycle_config(void);
+
+/* Sendet den Controller-Zustand */
+void send_controller_state(void);
+
+/* Konvertiert die GrowCycle-Konfiguration in JSON */
+cJSON *grow_cycle_config_to_json(GrowCycleConfig *config);
+
+/* Konvertiert den Controller-Zustand in JSON */
+cJSON *controller_state_to_json(ControllerState *state);
+
+/* Sendet JSON über WebSocket */
+void send_json_over_websocket(const char *json_string);
+
+/* Parsen von ControlCommand-Nachrichten */
+void parse_control_command(cJSON *root);
+
+/* Handhabt Lichtbefehle */
+void handle_light_command(const char *action, cJSON *value);
+
+/* Handhabt Pumpenbefehle */
+void handle_pump_command(const char *action, int deviceId, cJSON *value);
+
+/* Handhabt Systembefehle */
+void handle_system_command(const char *action, cJSON *value);
+
+/* Handhabt Wasserbefehle */
+void handle_water_command(const char *action, cJSON *value);
+
+/* Parsen von neuen GrowCycle-Nachrichten */
+void parse_new_grow_cycle(cJSON *root);
+
+/* Parsen von LED-Zeitplänen */
+void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config);
+
+/* Parsen von Bewässerungszeitplänen */
+void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config);
+
+/* Synchronisiert die RTC */
+void synchronize_rtc(const char *iso8601_time);
+
+/* Berechnet die Gesamtdauer des GrowCycle */
+uint32_t calculate_total_duration(GrowCycleConfig *config);
+
+
+
 /* Zielserver-Einstellungen */
 uint8_t destip[4] = {192, 168, 178, 25}; // IP-Adresse des Zielservers
 uint16_t destport = 8085;                // Port des Zielservers
 
 #define MAX_BUFFER_SIZE 2048
 
-/* Funktionsprototypen */
-void StartNetworkTask(void *argument);
-void network_init(void);
-void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size);
-void process_received_data(const char *json_payload);
-void parse_control_command(cJSON *root);
-void parse_new_grow_cycle(cJSON *root);
-void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config);
-void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config);
-bool websocket_handshake(uint8_t sock);
-void process_websocket_messages(uint8_t sock);
-void send_websocket_message(uint8_t sock, MessageForWebSocket *message);
-void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected);
-void synchronize_rtc(const char *iso8601_time);
-void handle_water_command(const char *action, cJSON *value);
-void handle_system_command(const char *action, cJSON *value);
-uint32_t calculate_total_duration(GrowCycleConfig *config);
-void handle_light_command(const char *action, cJSON *value);
-void handle_pump_command(const char *action, int deviceId, cJSON *value);
+
 
 /* Globale Variablen */
-uint8_t gDATABUF[MAX_BUFFER_SIZE];
+uint8_t DATABUF[MAX_BUFFER_SIZE];
 
 wiz_NetInfo gWIZNETINFO = {
     .mac = MAC_ADDRESS,
@@ -89,14 +157,14 @@ void StartNetworkTask(void *argument)
         uint16_t size = 0;
         if ((size = getSn_RX_RSR(sock)) > 0) {
             if (size > MAX_BUFFER_SIZE - 1) size = MAX_BUFFER_SIZE - 1;
-            memset(gDATABUF, 0, MAX_BUFFER_SIZE);
-            ret = recv(sock, gDATABUF, size);
+            memset(DATABUF, 0, MAX_BUFFER_SIZE);
+            ret = recv(sock, DATABUF, size);
             if (ret <= 0) {
                 LOG_ERROR("task_network.c: Error receiving data. Socket closed.");
                 close(sock);
                 websocket_connected = 0;
             } else {
-                process_received_websocket_data(sock, gDATABUF, ret);
+                process_received_websocket_data(sock, DATABUF, ret);
             }
         }
 
@@ -228,36 +296,56 @@ bool websocket_handshake(uint8_t sock)
 
 void process_websocket_messages(uint8_t sock)
 {
-    // Hier werden ausgehende Nachrichten verarbeitet
-    // Zum Beispiel Nachrichten aus einer Queue senden
+    LOG_INFO("process_websocket_messages: Processing outgoing messages from WebSocket queue");
 
     MessageForWebSocket msg;
-
     while (osMessageQueueGet(xWebSocketQueueHandle, &msg, NULL, 0) == osOK) {
+        LOG_DEBUG("process_websocket_messages: Retrieved message from queue");
+        LOG_DEBUG("process_websocket_messages: message_type=%d, device=%d, target=%d, action=%d, value=%u, json_payload=%s",
+                  msg.message_type,
+                  msg.device,
+                  msg.target,
+                  msg.action,
+                  msg.value,
+                  msg.json_payload);
 
-        LOG_DEBUG("task_network.c: Message from queue: message_type: %d, device: %d, target: %d, action: %d, value: %d",
-                  msg.message_type, msg.device, msg.target, msg.action, msg.value);
-
-        LOG_DEBUG("task_network.c: Forwarding to send_websocket_message");
         send_websocket_message(sock, &msg);
     }
+
+    LOG_INFO("process_websocket_messages: Finished processing WebSocket messages");
 }
+
 
 void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
 {
-    // Nachricht als JSON-String erstellen
-    char json_message[256];
+    LOG_INFO("send_websocket_message: Preparing to send WebSocket message");
 
-    snprintf(json_message, sizeof(json_message),
-             "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"target\":\"%s\",\"action\":\"%s\",\"value\":%u}",
+    const char *json_message;
+    char json_message_buffer[256];
+
+    const char *message_type_str = message_type_to_string(message->message_type);
+    const char *device_str = device_to_string(message->device);
+
+    LOG_DEBUG("send_websocket_message: Message details - message_type: %d (%s), device: %d (%s), value: %u",
+              message->message_type, message_type_str, message->device, device_str, message->value);
+
+    snprintf(json_message_buffer, sizeof(json_message_buffer),
+             "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"value\":%u}",
              uidStr,
-             message_type_to_string(message->message_type),
-             device_to_string(message->device),
-             target_to_string(message->target),
-             action_to_string(message->action),
+             message_type_str,
+             device_str,
              message->value);
 
+    json_message = json_message_buffer;
+
+    // Wenn `json_payload` gültige Daten enthält, diese verwenden
+    if (message->json_payload[0] != '\0') {
+        LOG_INFO("send_websocket_message: Using custom JSON payload");
+        json_message = message->json_payload;
+    }
+
     size_t message_len = strlen(json_message);
+    LOG_DEBUG("send_websocket_message: JSON message length is %lu", (unsigned long)message_len);
 
     size_t frame_size;
     uint8_t *websocket_frame;
@@ -268,20 +356,17 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
     } else if (message_len <= 65535) {
         frame_size = message_len + 8; // 4 Byte Extended Payload + 2 Byte Header + 4 Byte Masking Key
     } else {
-        LOG_ERROR("task_network.c: Message too long to be sent in a single WebSocket frame");
+        LOG_ERROR("send_websocket_message: Message too long to be sent in a single WebSocket frame");
         return;
     }
 
-    // Speicher für den Frame allokieren
     websocket_frame = (uint8_t *)malloc(frame_size);
     if (websocket_frame == NULL) {
-        LOG_ERROR("task_network.c: Failed to allocate memory for WebSocket frame");
+        LOG_ERROR("send_websocket_message: Failed to allocate memory for WebSocket frame");
         return;
     }
 
-    // WebSocket-Frame-Header erstellen
     websocket_frame[0] = 0x81; // FIN-Bit gesetzt, Text-Frame
-
     size_t offset;
     if (message_len <= 125) {
         websocket_frame[1] = 0x80 | (uint8_t)message_len; // Mask-Bit gesetzt, Payload-Länge
@@ -293,7 +378,6 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
         offset = 4;
     }
 
-    // Generiere Masking Key
     uint8_t masking_key[4];
     for (int i = 0; i < 4; i++) {
         masking_key[i] = rand() % 256;
@@ -301,30 +385,30 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
     memcpy(&websocket_frame[offset], masking_key, 4);
     offset += 4;
 
-    // Nachrichtenstruktur serialisieren und maskieren
     for (size_t i = 0; i < message_len; i++) {
         websocket_frame[offset + i] = json_message[i] ^ masking_key[i % 4];
     }
 
-    LOG_INFO("task_network.c: Sending WebSocket frame with length: %lu", (unsigned long)frame_size);
+    LOG_INFO("send_websocket_message: Sending WebSocket frame with length: %lu", (unsigned long)frame_size);
 
-    // Sende den Frame und prüfe auf Fehler
     int32_t total_sent = 0;
     while (total_sent < frame_size) {
         int32_t sent = send(sock, websocket_frame + total_sent, frame_size - total_sent);
         if (sent < 0) {
-            LOG_ERROR("task_network.c: Failed to send WebSocket frame");
+            LOG_ERROR("send_websocket_message: Failed to send WebSocket frame");
             free(websocket_frame);
             return;
         }
         total_sent += sent;
+        LOG_DEBUG("send_websocket_message: Sent %d bytes, total_sent = %d", sent, total_sent);
     }
 
-    LOG_INFO("task_network.c: Sent JSON message:\r\n  JSON: %s", json_message);
+    LOG_INFO("send_websocket_message: Sent JSON message:\r\n  JSON: %s", json_message);
 
-    // Speicher freigeben
     free(websocket_frame);
 }
+
+
 
 void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
 {
@@ -420,12 +504,127 @@ void process_received_data(const char *json_payload)
         parse_new_grow_cycle(root);
     } else if (strcmp(message_type->valuestring, "ControlCommand") == 0) {
         parse_control_command(root);
+    } else if (strcmp(message_type->valuestring, "TimeSync") == 0)  {
+		handle_timesync_message(root);
+    } else if (strcmp(message_type->valuestring, "StatusRequest") == 0) {
+        handle_status_request(root);
+    } else if (strcmp(message_type->valuestring, "EraseEEPROM") == 0) {
+        handle_erase_eeprom_message();
     } else {
         LOG_WARN("task_network.c: Unknown message_type: %s", message_type->valuestring);
     }
 
     cJSON_Delete(root);
 }
+
+
+void handle_erase_eeprom_message(void) {
+    LOG_INFO("task_network.c: Handling EraseEEPROM message");
+
+    uint8_t emptyData[EEPROM_SIZE];
+    memset(emptyData, 0xFF, sizeof(emptyData)); // Annahme: 0xFF ist der leere Zustand
+
+    if (EEPROM_Write(0x0000, emptyData, EEPROM_SIZE)) {
+        LOG_INFO("task_network.c: EEPROM erased successfully");
+    } else {
+        LOG_ERROR("task_network.c: Failed to erase EEPROM");
+    }
+}
+
+
+void handle_status_request(cJSON *root) {
+    LOG_INFO("task_network.c: Handling StatusRequest message");
+
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (payload == NULL) {
+        LOG_ERROR("task_network.c: No payload found in StatusRequest message");
+        return;
+    }
+
+    cJSON *requested_data = cJSON_GetObjectItem(payload, "requested_data");
+    if (requested_data != NULL && cJSON_IsString(requested_data)) {
+        if (strcmp(requested_data->valuestring, "GrowCycleConfig") == 0) {
+            // Sende GrowCycleConfig zurück
+            send_grow_cycle_config();
+        } else if (strcmp(requested_data->valuestring, "ControllerState") == 0) {
+            // Sende ControllerState zurück
+            send_controller_state();
+        } else {
+            LOG_WARN("task_network.c: Unknown requested_data: %s", requested_data->valuestring);
+        }
+    } else {
+        LOG_ERROR("task_network.c: requested_data not found or invalid in StatusRequest message");
+    }
+}
+
+
+
+void handle_timesync_message(cJSON *root) {
+    LOG_INFO("task_network.c: Handling TimeSync message");
+
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (payload == NULL) {
+        LOG_ERROR("task_network.c: No payload found in TimeSync message");
+        return;
+    }
+
+    cJSON *current_time = cJSON_GetObjectItem(payload, "current_time");
+    if (current_time != NULL && cJSON_IsString(current_time)) {
+        LOG_INFO("task_network.c: Synchronizing RTC with current_time: %s", current_time->valuestring);
+        synchronize_rtc(current_time->valuestring);
+    } else {
+        LOG_ERROR("task_network.c: current_time not found or invalid in TimeSync message");
+    }
+}
+
+
+
+void send_grow_cycle_config(void) {
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "message_type", "StatusResponse");
+    cJSON_AddStringToObject(response, "UID", uidStr);
+
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddItemToObject(response, "payload", payload);
+
+    osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+    // Konvertiere gGrowCycleConfig in JSON
+    cJSON *config_json = grow_cycle_config_to_json(&gGrowCycleConfig);
+    osMutexRelease(gGrowCycleConfigMutexHandle);
+
+    cJSON_AddItemToObject(payload, "GrowCycleConfig", config_json);
+
+    // Sende die Nachricht
+    char *json_string = cJSON_PrintUnformatted(response);
+    send_json_over_websocket(json_string);
+    cJSON_free(json_string);
+    cJSON_Delete(response);
+}
+
+
+void send_controller_state(void) {
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "message_type", "StatusResponse");
+    cJSON_AddStringToObject(response, "UID", uidStr);
+
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddItemToObject(response, "payload", payload);
+
+    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+    // Konvertiere gControllerState in JSON
+    cJSON *state_json = controller_state_to_json(&gControllerState);
+    osMutexRelease(gControllerStateMutexHandle);
+
+    cJSON_AddItemToObject(payload, "ControllerState", state_json);
+
+    // Sende die Nachricht
+    char *json_string = cJSON_PrintUnformatted(response);
+    send_json_over_websocket(json_string);
+    cJSON_free(json_string);
+    cJSON_Delete(response);
+}
+
+
 
 void parse_control_command(cJSON *root)
 {
@@ -474,6 +673,9 @@ void parse_control_command(cJSON *root)
         }
     }
 }
+
+
+
 
 void parse_new_grow_cycle(cJSON *root)
 {
@@ -739,4 +941,62 @@ uint32_t calculate_total_duration(GrowCycleConfig *config) {
     // Berechnung der Dauer der Bewässerungszeitpläne (optional, wenn sie separat berücksichtigt werden sollen)
     // ...
     return totalDuration; // Dauer in Sekunden
+}
+
+
+cJSON *grow_cycle_config_to_json(GrowCycleConfig *config) {
+    cJSON *config_json = cJSON_CreateObject();
+    if (!config_json) return NULL;
+
+    cJSON_AddStringToObject(config_json, "startGrowTime", config->startGrowTime);
+
+    cJSON *ledSchedules = cJSON_CreateArray();
+    for (uint8_t i = 0; i < config->ledScheduleCount; i++) {
+        cJSON *schedule = cJSON_CreateObject();
+        cJSON_AddNumberToObject(schedule, "durationOn", config->ledSchedules[i].durationOn);
+        cJSON_AddNumberToObject(schedule, "durationOff", config->ledSchedules[i].durationOff);
+        cJSON_AddNumberToObject(schedule, "repetition", config->ledSchedules[i].repetition);
+        cJSON_AddItemToArray(ledSchedules, schedule);
+    }
+    cJSON_AddItemToObject(config_json, "ledSchedules", ledSchedules);
+
+    cJSON *wateringSchedules = cJSON_CreateArray();
+    for (uint8_t i = 0; i < config->wateringScheduleCount; i++) {
+        cJSON *schedule = cJSON_CreateObject();
+        cJSON_AddNumberToObject(schedule, "duration_full", config->wateringSchedules[i].duration_full);
+        cJSON_AddNumberToObject(schedule, "duration_empty", config->wateringSchedules[i].duration_empty);
+        cJSON_AddNumberToObject(schedule, "repetition", config->wateringSchedules[i].repetition);
+        cJSON_AddItemToArray(wateringSchedules, schedule);
+    }
+    cJSON_AddItemToObject(config_json, "wateringSchedules", wateringSchedules);
+
+    return config_json;
+}
+
+
+cJSON *controller_state_to_json(ControllerState *state) {
+    cJSON *state_json = cJSON_CreateObject();
+    if (!state_json) return NULL;
+
+    cJSON_AddBoolToObject(state_json, "wasserbeckenZustand", state->wasserbeckenZustand);
+    cJSON_AddBoolToObject(state_json, "pumpeZulauf", state->pumpeZulauf);
+    cJSON_AddBoolToObject(state_json, "pumpeAblauf", state->pumpeAblauf);
+    cJSON_AddBoolToObject(state_json, "sensorOben", state->sensorOben);
+    cJSON_AddBoolToObject(state_json, "sensorUnten", state->sensorUnten);
+    cJSON_AddNumberToObject(state_json, "lightIntensity", state->lightIntensity);
+    cJSON_AddBoolToObject(state_json, "automaticMode", state->automaticMode);
+
+    return state_json;
+}
+
+void send_json_over_websocket(const char *json_string) {
+    MessageForWebSocket msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.message_type = MESSAGE_TYPE_STATUS_RESPONSE;
+    strncpy(msg.json_payload, json_string, sizeof(msg.json_payload) - 1);
+
+    // Fügen Sie die Nachricht zur WebSocket-Queue hinzu
+    if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
+        LOG_ERROR("task_network.c: Failed to send JSON over WebSocket");
+    }
 }

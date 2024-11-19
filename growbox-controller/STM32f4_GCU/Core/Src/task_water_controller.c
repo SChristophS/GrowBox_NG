@@ -19,7 +19,7 @@ void achieve_water_state_full(void);
 void achieve_water_state_empty(void);
 static void handle_manual_override(WaterCommand *receivedCommand, bool *manualOverride, WaterState *manualDesiredState);
 static bool wait_for_start_time(struct tm *startTimeTm);
-void adjust_schedule_based_on_elapsed_time(
+static void adjust_schedule_based_on_elapsed_time(
     WateringSchedule *wateringSchedules,
     uint8_t wateringScheduleCount,
     time_t elapsedTime,
@@ -69,8 +69,28 @@ void StartWaterControllerTask(void *argument)
     bool timeSynchronized = false;
     bool scheduleAdjusted = false;
 
-    // 1. Konfiguration laden und Startzeit parsen
-    configLoaded = load_grow_cycle_config(&growConfig, &startTimeTm, &timeSynchronized);
+    // 1. Überprüfen, ob eine Konfiguration verfügbar ist
+    osMutexAcquire(gConfigAvailableMutexHandle, osWaitForever);
+    bool configAvailable = gConfigAvailable;
+    osMutexRelease(gConfigAvailableMutexHandle);
+
+    if (configAvailable) {
+        // Kopieren der Konfiguration aus der globalen Variable
+        osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+        memcpy(&growConfig, &gGrowCycleConfig, sizeof(GrowCycleConfig));
+        osMutexRelease(gGrowCycleConfigMutexHandle);
+
+        // Startzeit und Synchronisationsstatus aus globalen Variablen abrufen
+        osMutexAcquire(gStartTimeMutexHandle, osWaitForever);
+        memcpy(&startTimeTm, &gStartTimeTm, sizeof(struct tm));
+        timeSynchronized = gTimeSynchronized;
+        osMutexRelease(gStartTimeMutexHandle);
+
+        configLoaded = true;
+    } else {
+        LOG_WARN("task_water_controller:\tNo configuration available at startup");
+        configLoaded = false;
+    }
 
     for (;;)
     {
@@ -93,19 +113,35 @@ void StartWaterControllerTask(void *argument)
         int32_t flags = osEventFlagsWait(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER, osFlagsWaitAny, 0);
         if (flags > 0 && (flags & NEW_GROW_CYCLE_CONFIG_AVAILABLE_WATER))
         {
-            // Neue Konfiguration laden
-            configLoaded = load_grow_cycle_config(&growConfig, &startTimeTm, &timeSynchronized);
-            finished = false;
-            scheduleIndex = 0;
-            repetitionIndex = 0;
-            currentPhase = PHASE_FULL;
-            phaseDuration = 0;
-            scheduleAdjusted = false;
-            LOG_INFO("task_water_controller:\tNew GrowCycleConfig loaded");
-        }
-        else
-        {
-            vTaskDelay(pdMS_TO_TICKS(100));
+            // Neue Konfiguration ist verfügbar
+            osMutexAcquire(gConfigAvailableMutexHandle, osWaitForever);
+            configAvailable = gConfigAvailable;
+            osMutexRelease(gConfigAvailableMutexHandle);
+
+            if (configAvailable) {
+                // Kopieren der Konfiguration aus der globalen Variable
+                osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+                memcpy(&growConfig, &gGrowCycleConfig, sizeof(GrowCycleConfig));
+                osMutexRelease(gGrowCycleConfigMutexHandle);
+
+                // Startzeit und Synchronisationsstatus aus globalen Variablen abrufen
+                osMutexAcquire(gStartTimeMutexHandle, osWaitForever);
+                memcpy(&startTimeTm, &gStartTimeTm, sizeof(struct tm));
+                timeSynchronized = gTimeSynchronized;
+                osMutexRelease(gStartTimeMutexHandle);
+
+                configLoaded = true;
+                finished = false;
+                scheduleIndex = 0;
+                repetitionIndex = 0;
+                currentPhase = PHASE_FULL;
+                phaseDuration = 0;
+                scheduleAdjusted = false;
+                LOG_INFO("task_water_controller:\tNew GrowCycleConfig loaded");
+            } else {
+                LOG_WARN("task_water_controller:\tConfiguration flag set but no configuration available");
+                configLoaded = false;
+            }
         }
 
         // 4. Überprüfen, ob Konfiguration geladen und nicht beendet
@@ -127,6 +163,7 @@ void StartWaterControllerTask(void *argument)
             // 6. Zeitplan anpassen basierend auf verstrichener Zeit
             struct tm currentTimeTm;
             if (!get_current_time(&currentTimeTm)) {
+                LOG_ERROR("task_water_controller:\tFailed to get current time");
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 continue;
             }
@@ -203,7 +240,7 @@ static bool wait_for_start_time(struct tm *startTimeTm)
 {
     struct tm currentTimeTm;
     if (!get_current_time(&currentTimeTm)) {
-        LOG_ERROR("task_water_controller: Failed to get current time");
+        LOG_ERROR("task_water_controller:\tFailed to get current time");
         return false;
     }
 
@@ -215,8 +252,8 @@ static bool wait_for_start_time(struct tm *startTimeTm)
     strftime(currentTimeStr, sizeof(currentTimeStr), "%Y-%m-%d %H:%M:%S", &currentTimeTm);
     strftime(startTimeStr, sizeof(startTimeStr), "%Y-%m-%d %H:%M:%S", startTimeTm);
 
-    LOG_INFO("task_water_controller:\tcurrentTime: %s", currentTimeStr);
-    LOG_INFO("task_water_controller:\tstartTime:   %s", startTimeStr);
+    LOG_INFO("task_water_controller:\tCurrent Time: %s", currentTimeStr);
+    LOG_INFO("task_water_controller:\tStart Time:   %s", startTimeStr);
     LOG_INFO("task_water_controller:\tComparison result: %d", cmp);
 
     if (cmp < 0) {
@@ -228,7 +265,7 @@ static bool wait_for_start_time(struct tm *startTimeTm)
 }
 
 // 6. Zeitplan anpassen basierend auf verstrichener Zeit
-void adjust_schedule_based_on_elapsed_time(
+static void adjust_schedule_based_on_elapsed_time(
     WateringSchedule *wateringSchedules,
     uint8_t wateringScheduleCount,
     time_t elapsedTime,
@@ -239,6 +276,12 @@ void adjust_schedule_based_on_elapsed_time(
     uint32_t *phaseStartTime,
     bool *finished)
 {
+    if (wateringSchedules == NULL || scheduleIndex == NULL || repetitionIndex == NULL ||
+        currentPhase == NULL || phaseDuration == NULL || phaseStartTime == NULL || finished == NULL) {
+        LOG_ERROR("task_water_controller:\tInvalid arguments to adjust_schedule_based_on_elapsed_time");
+        return;
+    }
+
     time_t accumulatedTime = 0;
 
     LOG_DEBUG("task_water_controller:\telapsedTime: %ld seconds", elapsedTime);
@@ -246,6 +289,12 @@ void adjust_schedule_based_on_elapsed_time(
     // Durchlaufen aller Zeitpläne
     for (uint8_t i = 0; i < wateringScheduleCount; i++) {
         WateringSchedule *schedule = &wateringSchedules[i];
+
+        // Validierung der Schedule-Daten
+        if (schedule->duration_full == 0 && schedule->duration_empty == 0) {
+            LOG_WARN("task_water_controller:\tSchedule %d has zero duration for both FULL and EMPTY phases. Skipping.", i);
+            continue;
+        }
 
         // Durchlaufen aller Wiederholungen innerhalb eines Zeitplans
         for (uint8_t rep = 0; rep < schedule->repetition; rep++) {
@@ -255,6 +304,11 @@ void adjust_schedule_based_on_elapsed_time(
 
             // Gesamtdauer dieser Wiederholung
             time_t repetitionDuration = fullDuration + emptyDuration;
+
+            if (repetitionDuration == 0) {
+                LOG_WARN("task_water_controller:\tRepetition %d of Schedule %d has zero duration. Skipping.", rep, i);
+                continue;
+            }
 
             LOG_DEBUG("task_water_controller:\tChecking Schedule %d, Repetition %d", i, rep);
             LOG_DEBUG("task_water_controller:\tAccumulated Time: %ld seconds", accumulatedTime);
@@ -355,42 +409,6 @@ void process_watering_schedule(
     }
 }
 
-void UpdatePumpState(bool enable, uint8_t pumpId)
-{
-    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
-
-    if (pumpId == PUMP_ZULAUF) {
-        if (gControllerState.pumpeZulauf != enable) {
-            gControllerState.pumpeZulauf = enable;
-            LOG_DEBUG("task_water_controller:\tUpdated pumpeZulauf to %s", enable ? "ON" : "OFF");
-        }
-    } else if (pumpId == PUMP_ABLAUF) {
-        if (gControllerState.pumpeAblauf != enable) {
-            gControllerState.pumpeAblauf = enable;
-            LOG_DEBUG("task_water_controller:\tUpdated pumpeAblauf to %s", enable ? "ON" : "OFF");
-        }
-    }
-
-    osMutexRelease(gControllerStateMutexHandle);
-}
-
-void ControlPump(bool enable, uint8_t pumpId)
-{
-    LOG_DEBUG("task_water_controller:\tControlPump - PumpID %d, Enable: %s", pumpId, enable ? "true" : "false");
-
-    // Aktualisiere den Controller-Zustand
-    UpdatePumpState(enable, pumpId);
-
-    // Erstelle Hardwarebefehl
-    HardwareCommand cmd;
-    cmd.commandType = COMMAND_CONTROL_PUMP;
-    cmd.deviceId = pumpId;
-    cmd.enable = enable;
-
-    // Sende Befehl an Hardware-Task
-    osMessageQueuePut(xHardwareQueueHandle, &cmd, 0, 0);
-}
-
 void achieve_water_state_full(void)
 {
     LOG_INFO("task_water_controller:\tStarting process to achieve state 'FULL'");
@@ -466,4 +484,41 @@ void achieve_water_state_empty(void)
     // Pumpe ausschalten
     ControlPump(false, PUMP_ABLAUF);
     LOG_INFO("task_water_controller:\tPump turned off after achieving state 'EMPTY'");
+}
+
+void UpdatePumpState(bool enable, uint8_t pumpId)
+{
+    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+
+    if (pumpId == PUMP_ZULAUF) {
+        if (gControllerState.pumpeZulauf != enable) {
+            gControllerState.pumpeZulauf = enable;
+            LOG_DEBUG("task_water_controller:\tUpdated pumpeZulauf to %s", enable ? "ON" : "OFF");
+        }
+    } else if (pumpId == PUMP_ABLAUF) {
+        if (gControllerState.pumpeAblauf != enable) {
+            gControllerState.pumpeAblauf = enable;
+            LOG_DEBUG("task_water_controller:\tUpdated pumpeAblauf to %s", enable ? "ON" : "OFF");
+        }
+    }
+
+    osMutexRelease(gControllerStateMutexHandle);
+}
+
+
+void ControlPump(bool enable, uint8_t pumpId)
+{
+    LOG_DEBUG("task_water_controller:\tControlPump - PumpID %d, Enable: %s", pumpId, enable ? "true" : "false");
+
+    // Aktualisiere den Controller-Zustand
+    UpdatePumpState(enable, pumpId);
+
+    // Erstelle Hardwarebefehl
+    HardwareCommand cmd;
+    cmd.commandType = COMMAND_CONTROL_PUMP;
+    cmd.deviceId = pumpId;
+    cmd.enable = enable;
+
+    // Sende Befehl an Hardware-Task
+    osMessageQueuePut(xHardwareQueueHandle, &cmd, 0, 0);
 }
