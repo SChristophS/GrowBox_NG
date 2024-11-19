@@ -1,3 +1,0 @@
-../Core/Src/w5500/MQTT/MQTTPacket/src/MQTTUnsubscribeClient.c:28:5:MQTTSerialize_unsubscribeLength	24	static
-../Core/Src/w5500/MQTT/MQTTPacket/src/MQTTUnsubscribeClient.c:49:5:MQTTSerialize_unsubscribe	40	static
-../Core/Src/w5500/MQTT/MQTTPacket/src/MQTTUnsubscribeClient.c:92:5:MQTTDeserialize_unsuback	24	static
