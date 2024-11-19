@@ -16,18 +16,18 @@
                 },
                 {
                     "durationOn": 1,
-                    "durationOff": 10,
+                    "durationOff": 100,
                     "repetition": 10000
                 }
             ],
             "wateringSchedules": [
                 {
-                    "duration_full": 500,
+                    "duration_full": 0,
                     "duration_empty": 500,
                     "repetition": 25
                 },
                 {
-                    "duration_full": 500,
+                    "duration_full": 0,
                     "duration_empty": 500,
                     "repetition": 50
                 }
