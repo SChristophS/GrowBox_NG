@@ -142,7 +142,6 @@ def handle_control_command_message(client, server, message_data):
     print(f"[DEBUG] ControlCommand received for target_UUID {target_UUID}: {message_to_controller}")
     forward_message_to_controller(target_UUID, message_to_controller)
 
-
 def handle_new_grow_cycle_message(client, server, message_data):
     # Ähnlich wie bei ControlCommand, Nachricht an den Controller weiterleiten
     target_UUID = message_data.get('target_UUID')
@@ -158,7 +157,6 @@ def handle_new_grow_cycle_message(client, server, message_data):
     print(f"[DEBUG] newGrowCycle message received for target_UUID {target_UUID}")
     forward_message_to_controller(target_UUID, message_to_controller)
 
-
 def forward_message_to_controller(chip_id, message_data):
     controller_to_notify = [client_id for client_id, id in controller_map.items() if id == chip_id]
     message = json.dumps(message_data)
@@ -170,7 +168,6 @@ def forward_message_to_controller(chip_id, message_data):
         else:
             print(f"[DEBUG] Controller client {client_id} not connected")
 
-
 def forward_message_to_frontends(chip_id, message_data):
     frontends_to_notify = [client_id for client_id, chip_ids in frontend_map.items() if chip_id in chip_ids]
     message = json.dumps(message_data)
@@ -181,7 +178,6 @@ def forward_message_to_frontends(chip_id, message_data):
             print(f"[DEBUG] Message sent to frontend client {client_id}: {message}")
         else:
             print(f"[DEBUG] Frontend client {client_id} not connected")
-
 
 def notify_frontend_clients(server, client_id):
     frontend_clients_to_notify = []

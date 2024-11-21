@@ -59,7 +59,7 @@ void StartHardwareTask(void *argument)
                         LOG_WARN("task_hardware.c: Failed to set light intensity to %d", cmd.intensity);
                         break;
                     }
-                    send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_LIGHT, cmd.intensity);
+                    send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_CONTROLLER, TARGET_LIGHT_INTENSITY, cmd.intensity);
                     break;
 
 

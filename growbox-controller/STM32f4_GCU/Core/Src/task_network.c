@@ -110,6 +110,8 @@ void synchronize_rtc(const char *iso8601_time);
 /* Berechnet die Gesamtdauer des GrowCycle */
 uint32_t calculate_total_duration(GrowCycleConfig *config);
 
+/* Sendet registrier message */
+void send_register_message();
 
 
 /* Zielserver-Einstellungen */
@@ -177,6 +179,7 @@ void StartNetworkTask(void *argument)
     }
 }
 
+
 void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected)
 {
     switch (*socket_status) {
@@ -212,7 +215,8 @@ void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_por
                     *websocket_connected = 1;
 
                     // Registrierungsnachricht senden
-                    add_message_to_websocket_queue(MESSAGE_TYPE_REGISTER, DEVICE_CONTROLLER, 0, 0, 0);
+                    LOG_INFO("task_network.c: sending Register Message");
+                    send_register_message();
                 } else {
                     LOG_ERROR("task_network.c: WebSocket handshake failed");
                     close(sock);
@@ -294,25 +298,17 @@ bool websocket_handshake(uint8_t sock)
     }
 }
 
-void process_websocket_messages(uint8_t sock)
-{
-    LOG_INFO("process_websocket_messages: Processing outgoing messages from WebSocket queue");
+void process_websocket_messages(uint8_t sock) {
+    MessageForWebSocket* msg;
 
-    MessageForWebSocket msg;
     while (osMessageQueueGet(xWebSocketQueueHandle, &msg, NULL, 0) == osOK) {
         LOG_DEBUG("process_websocket_messages: Retrieved message from queue");
-        LOG_DEBUG("process_websocket_messages: message_type=%d, device=%d, target=%d, action=%d, value=%u, json_payload=%s",
-                  msg.message_type,
-                  msg.device,
-                  msg.target,
-                  msg.action,
-                  msg.value,
-                  msg.json_payload);
+        // Nachricht verarbeiten
+        send_websocket_message(sock, msg);
 
-        send_websocket_message(sock, &msg);
+        // Nachricht freigeben
+        freeMessage(msg);
     }
-
-    LOG_INFO("process_websocket_messages: Finished processing WebSocket messages");
 }
 
 
@@ -320,41 +316,46 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
 {
     LOG_INFO("send_websocket_message: Preparing to send WebSocket message");
 
-    const char *json_message;
-    char json_message_buffer[256];
-
-    const char *message_type_str = message_type_to_string(message->message_type);
-    const char *device_str = device_to_string(message->device);
-
-    LOG_DEBUG("send_websocket_message: Message details - message_type: %d (%s), device: %d (%s), value: %u",
-              message->message_type, message_type_str, message->device, device_str, message->value);
-
-    snprintf(json_message_buffer, sizeof(json_message_buffer),
-             "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"value\":%u}",
-             uidStr,
-             message_type_str,
-             device_str,
-             message->value);
-
-    json_message = json_message_buffer;
+    char json_message[512]; // Passen Sie die Größe entsprechend an
+    size_t message_len = 0;
 
     // Wenn `json_payload` gültige Daten enthält, diese verwenden
     if (message->json_payload[0] != '\0') {
         LOG_INFO("send_websocket_message: Using custom JSON payload");
-        json_message = message->json_payload;
+        strncpy(json_message, message->json_payload, sizeof(json_message) - 1);
+        json_message[sizeof(json_message) - 1] = '\0'; // Sicherheitshalber terminieren
+        message_len = strlen(json_message);
+    } else {
+        // Bauen Sie die JSON-Nachricht basierend auf message_type, device, etc.
+        const char *message_type_str = message_type_to_string(message->message_type);
+        const char *device_str = device_to_string(message->device);
+        const char *changed_value_str = target_to_string(message->target);
+
+        LOG_DEBUG("send_websocket_message: Message details - message_type: %d (%s), device: %d (%s), value: %u",
+                  message->message_type, message_type_str, message->device, device_str, message->value);
+
+        snprintf(json_message, sizeof(json_message),
+                 "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"changedValue\":\"%s\",\"value\":%u}",
+                 uidStr,
+                 message_type_str,
+                 device_str,
+                 changed_value_str,
+                 message->value);
+
+        message_len = strlen(json_message);
     }
 
-    size_t message_len = strlen(json_message);
+    LOG_DEBUG("send_websocket_message: json_message = %s", json_message);
     LOG_DEBUG("send_websocket_message: JSON message length is %lu", (unsigned long)message_len);
 
+    // Vorbereitung des WebSocket-Frames
     size_t frame_size;
     uint8_t *websocket_frame;
 
-    // Berechnen der Frame-Größe basierend auf der Nachrichtengröße
     if (message_len <= 125) {
-        frame_size = message_len + 6; // 2 Byte Header + 4 Byte Masking Key
+        frame_size = 2 + 4 + message_len; // 2 Byte Header + 4 Byte Masking Key + Payload
     } else if (message_len <= 65535) {
-        frame_size = message_len + 8; // 4 Byte Extended Payload + 2 Byte Header + 4 Byte Masking Key
+        frame_size = 4 + 4 + message_len; // 4 Byte Header (2 Byte Extended Payload Length) + 4 Byte Masking Key + Payload
     } else {
         LOG_ERROR("send_websocket_message: Message too long to be sent in a single WebSocket frame");
         return;
@@ -366,18 +367,19 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
         return;
     }
 
-    websocket_frame[0] = 0x81; // FIN-Bit gesetzt, Text-Frame
-    size_t offset;
+    size_t offset = 0;
+
+    // Frame Header
+    websocket_frame[offset++] = 0x81; // FIN bit gesetzt, Opcode = 0x1 (Text)
     if (message_len <= 125) {
-        websocket_frame[1] = 0x80 | (uint8_t)message_len; // Mask-Bit gesetzt, Payload-Länge
-        offset = 2;
+        websocket_frame[offset++] = 0x80 | (uint8_t)message_len; // Maskenbit gesetzt, Payload-Länge
     } else if (message_len <= 65535) {
-        websocket_frame[1] = 0x80 | 126; // Mask-Bit gesetzt, Extended Payload-Länge
-        websocket_frame[2] = (message_len >> 8) & 0xFF;
-        websocket_frame[3] = message_len & 0xFF;
-        offset = 4;
+        websocket_frame[offset++] = 0x80 | 126; // Maskenbit gesetzt, Extended Payload-Länge folgt
+        websocket_frame[offset++] = (message_len >> 8) & 0xFF;
+        websocket_frame[offset++] = message_len & 0xFF;
     }
 
+    // Masking Key
     uint8_t masking_key[4];
     for (int i = 0; i < 4; i++) {
         masking_key[i] = rand() % 256;
@@ -385,12 +387,14 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
     memcpy(&websocket_frame[offset], masking_key, 4);
     offset += 4;
 
+    // Maskiertes Payload
     for (size_t i = 0; i < message_len; i++) {
         websocket_frame[offset + i] = json_message[i] ^ masking_key[i % 4];
     }
 
     LOG_INFO("send_websocket_message: Sending WebSocket frame with length: %lu", (unsigned long)frame_size);
 
+    // Senden des Frames über den Socket
     int32_t total_sent = 0;
     while (total_sent < frame_size) {
         int32_t sent = send(sock, websocket_frame + total_sent, frame_size - total_sent);
@@ -407,6 +411,7 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
 
     free(websocket_frame);
 }
+
 
 
 
@@ -1000,3 +1005,38 @@ void send_json_over_websocket(const char *json_string) {
         LOG_ERROR("task_network.c: Failed to send JSON over WebSocket");
     }
 }
+
+void send_register_message() {
+    MessageForWebSocket* msg = allocateMessage();
+    if (msg == NULL) {
+        LOG_ERROR("send_register_message: Failed to allocate message");
+        return;
+    }
+
+    // Nachricht initialisieren
+    msg->message_type = MESSAGE_TYPE_REGISTER;
+    msg->device = DEVICE_CONTROLLER;
+    int ret = snprintf(msg->json_payload, sizeof(msg->json_payload),
+             "{\"message_type\":\"register\",\"device\":\"controller\",\"UID\":\"%s\"}",
+             uidStr);
+
+    if (ret < 0) {
+        LOG_ERROR("send_register_message: snprintf failed");
+        freeMessage(msg);
+        return;
+    } else if (ret >= sizeof(msg->json_payload)) {
+        LOG_WARN("send_register_message: JSON message was truncated");
+    }
+
+    LOG_DEBUG("send_register_message: msg->json_payload = %s", msg->json_payload);
+
+
+    // Nachricht zur Queue hinzufügen
+    if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
+        LOG_ERROR("send_register_message: Failed to send message to WebSocketQueue");
+        freeMessage(msg);
+    } else {
+        LOG_INFO("send_register_message: Register message added to WebSocketQueue");
+    }
+}
+

@@ -15,7 +15,7 @@
 #include <time.h>
 #include "time_utils.h"
 #include "task_light_controller.h"
-
+#include "helper_websocket.h"
 
 // Funktionsprototypen
 static bool wait_for_start_time(struct tm *startTimeTm);
@@ -36,9 +36,12 @@ void StartLightTask(void *argument)
 {
     LOG_INFO("task_light_controller:\tStarting Light Control Task");
 
-    //LOG_INFO("task_light_controller:\tWaiting for 5 seconds");
-    //vTaskDelay(pdMS_TO_TICKS(5000));
-    //LOG_INFO("task_light_controller:\tWaiting done");
+    // initial 0
+    ControlLight(0);
+
+    LOG_INFO("task_light_controller:\tWaiting for 5 seconds");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    LOG_INFO("task_light_controller:\tWaiting done");
 
     // Variablen für die Lichtsteuerung
     GrowCycleConfig growConfig;
@@ -463,15 +466,22 @@ void process_light_schedule(
 
 
 void UpdateLightControllerState(uint8_t lightIntensity) {
-    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
 
-    if (gControllerState.lightIntensity != lightIntensity) {
-        gControllerState.lightIntensity = lightIntensity;
-        LOG_DEBUG("task_light_controller:\tUpdated lightIntensity in gControllerState to %d", lightIntensity);
+	osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
 
-        osEventFlagsSet(gControllerEventGroupHandle, LIGHT_INTENSITY_CHANGED_BIT);
-    }
+
+	gControllerState.lightIntensity = lightIntensity;
+	LOG_DEBUG("task_light_controller:\tUpdated lightIntensity in gControllerState to %d", lightIntensity);
+
+	osEventFlagsSet(gControllerEventGroupHandle, LIGHT_INTENSITY_CHANGED_BIT);
+
+	// send status update
+	send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_CONTROLLER, TARGET_LIGHT_INTENSITY, lightIntensity);
+
+
     osMutexRelease(gControllerStateMutexHandle);
+
+
 }
 
 
@@ -490,8 +500,20 @@ void ControlLight(uint8_t lightIntensity) {
 void achieve_light_intensity(uint8_t intensity)
 {
     LOG_DEBUG("task_light_controller:\tSetting light intensity to %d", intensity);
-    UpdateLightControllerState(intensity);
-    ControlLight(intensity);
+
+    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+    if (gControllerState.lightIntensity != intensity) {
+        UpdateLightControllerState(intensity);
+        ControlLight(intensity);
+    }
+    else {
+    	LOG_DEBUG("task_light_controller:\tNot necesarry to send new command, intensity already achieved");
+    	LOG_DEBUG("task_light_controller:\tgControllerState.lightIntensity = %d", gControllerState.lightIntensity);
+    	LOG_DEBUG("task_light_controller:\tsoll Wert = %d", intensity);
+    }
+    osMutexRelease(gControllerStateMutexHandle);
+
+
 };
 
 

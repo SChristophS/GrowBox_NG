@@ -56,12 +56,12 @@ void StartSensorTask(void *argument)
 
             if (WaterSensorObenValueChanged){
             	// Sende Statusnachricht für sensorOben
-            	send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_SENSOR_OBEN, currentSensorOben);
+                send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_CONTROLLER, HARDWARE_SENSOR_OBEN, currentSensorOben);
             }
 
             if (WaterSensorUntenValueChanged){
             	// Sende Statusnachricht für sensorUnten
-            	send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_SENSOR_UNTEN, currentSensorUnten);
+            	send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_CONTROLLER, HARDWARE_SENSOR_UNTEN, currentSensorUnten);
             }
 
             // Setze Event, um andere Tasks zu benachrichtigen

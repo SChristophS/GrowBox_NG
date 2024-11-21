@@ -11,14 +11,31 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+// Define devices
+#define DEVICE_CONTROLLER 1
+#define DEVICE_FRONTEND 2
+
 // Define targets
 #define TARGET_WATER_LEVEL 1
 #define TARGET_LIGHT_INTENSITY 2
 #define TARGET_READYFORAUTORUN 3
 #define TARGET_PUMPE_ZULAUF 4
 #define TARGET_PUMPE_ABLAUF 5
-#define TARGET_SENSOR_VOLL 6
-#define TARGET_SENSOR_LEER 7
+
+// Connected Hardware
+#define HARDWARE_LIGHT 1
+#define HARDWARE_PUMP_ZULAUF 2
+#define HARDWARE_PUMP_ABLAUF 3
+#define HARDWARE_SENSOR_OBEN 4
+#define HARDWARE_SENSOR_UNTEN 5
+
+/*
+#define DEVICE_LIGHT 1
+#define DEVICE_PUMP_ZULAUF 2
+#define DEVICE_PUMP_ABLAUF 3
+#define DEVICE_SENSOR_OBEN 4
+#define DEVICE_SENSOR_UNTEN 5
+*/
 
 // Define actions
 #define ACTION_SET 1
@@ -67,6 +84,8 @@ extern osMutexId_t gEepromMutexHandle;
 extern osMutexId_t gLoggerMutexHandle;
 extern osMutexId_t gConfigAvailableMutexHandle;
 extern osMutexId_t gStartTimeMutexHandle;
+extern osMutexId_t gMessagePoolMutexHandle;
+
 
 extern osEventFlagsId_t gControllerEventGroupHandle;
 extern osEventFlagsId_t INITIALIZATION_COMPLETEHandle;

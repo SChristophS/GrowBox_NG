@@ -102,7 +102,7 @@ const osThreadAttr_t AliveTask_attributes = {
 osThreadId_t NetworkTaskHandle;
 const osThreadAttr_t NetworkTask_attributes = {
   .name = "NetworkTask",
-  .stack_size = 2048 * 4,
+  .stack_size = 3000 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for WaterController */
@@ -131,7 +131,7 @@ const osThreadAttr_t LightTask_attributes = {
 };
 /* Definitions for SensorTask */
 osThreadId_t SensorTaskHandle;
-uint32_t SensorTaskBuffer[ 256 ];
+uint32_t SensorTaskBuffer[ 512 ];
 osStaticThreadDef_t SensorTaskControlBlock;
 const osThreadAttr_t SensorTask_attributes = {
   .name = "SensorTask",
@@ -177,8 +177,14 @@ const osMessageQueueAttr_t xLightControllerQueue_attributes = {
 };
 /* Definitions for xWebSocketQueue */
 osMessageQueueId_t xWebSocketQueueHandle;
+uint8_t xWebSocketQueueBuffer[ 3 * 6 ];
+osStaticMessageQDef_t xWebSocketQueueControlBlock;
 const osMessageQueueAttr_t xWebSocketQueue_attributes = {
-  .name = "xWebSocketQueue"
+  .name = "xWebSocketQueue",
+  .cb_mem = &xWebSocketQueueControlBlock,
+  .cb_size = sizeof(xWebSocketQueueControlBlock),
+  .mq_mem = &xWebSocketQueueBuffer,
+  .mq_size = sizeof(xWebSocketQueueBuffer)
 };
 /* Definitions for xHardwareQueue */
 osMessageQueueId_t xHardwareQueueHandle;
@@ -269,6 +275,14 @@ const osMutexAttr_t gStartTimeMutex_attributes = {
   .cb_mem = &gStartTimeMutexControlBlock,
   .cb_size = sizeof(gStartTimeMutexControlBlock),
 };
+/* Definitions for gMessagePoolMutex */
+osMutexId_t gMessagePoolMutexHandle;
+osStaticMutexDef_t gMessagePoolMutexControlBlock;
+const osMutexAttr_t gMessagePoolMutex_attributes = {
+  .name = "gMessagePoolMutex",
+  .cb_mem = &gMessagePoolMutexControlBlock,
+  .cb_size = sizeof(gMessagePoolMutexControlBlock),
+};
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
 osStaticEventGroupDef_t gControllerEventGroupControlBlock;
@@ -295,6 +309,7 @@ bool automaticMode;
 bool gConfigAvailable;
 struct tm gStartTimeTm;
 bool gTimeSynchronized;
+
 
 /* USER CODE END PV */
 
@@ -426,6 +441,9 @@ int main(void)
   /* creation of gStartTimeMutex */
   gStartTimeMutexHandle = osMutexNew(&gStartTimeMutex_attributes);
 
+  /* creation of gMessagePoolMutex */
+  gMessagePoolMutexHandle = osMutexNew(&gMessagePoolMutex_attributes);
+
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
@@ -446,7 +464,7 @@ int main(void)
   xLightControllerQueueHandle = osMessageQueueNew (1, sizeof(uint8_t), &xLightControllerQueue_attributes);
 
   /* creation of xWebSocketQueue */
-  xWebSocketQueueHandle = osMessageQueueNew (1, 6, &xWebSocketQueue_attributes);
+  xWebSocketQueueHandle = osMessageQueueNew (3, 6, &xWebSocketQueue_attributes);
 
   /* creation of xHardwareQueue */
   xHardwareQueueHandle = osMessageQueueNew (1, 4, &xHardwareQueue_attributes);
@@ -1003,7 +1021,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
-
 
 /**
   * @brief  Period elapsed callback in non blocking mode

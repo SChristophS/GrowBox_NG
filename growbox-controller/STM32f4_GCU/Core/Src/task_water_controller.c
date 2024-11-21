@@ -45,6 +45,11 @@ void process_watering_schedule(
 
 void StartWaterControllerTask(void *argument)
 {
+
+	LOG_INFO("task_water_controller:\tWaiting for 5 seconds");
+	    vTaskDelay(pdMS_TO_TICKS(5000));
+	    LOG_INFO("task_water_controller:\tWaiting done");
+
     LOG_INFO("task_water_controller:\tStarting Water Controller Task");
 
     // Variablen für die Wassersteuerung
@@ -190,10 +195,10 @@ void StartWaterControllerTask(void *argument)
         osMutexAcquire(gAutomaticModeHandle, osWaitForever);
         bool isAutomaticMode = automaticMode;
         osMutexRelease(gAutomaticModeHandle);
-        LOG_DEBUG("task_water_controller:\tAutomatic mode status: %s", isAutomaticMode ? "ON" : "OFF");
 
         if (!isAutomaticMode)
         {
+        	LOG_DEBUG("task_water_controller:\tAutomatic mode status: %s", isAutomaticMode ? "ON" : "OFF");
             LOG_INFO("task_water_controller:\tAutomatic mode is disabled. Turning pumps off.");
             ControlPump(false, PUMP_ZULAUF);
             ControlPump(false, PUMP_ABLAUF);
