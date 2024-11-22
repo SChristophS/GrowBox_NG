@@ -30,6 +30,9 @@
 
 #define EEPROM_SIZE 32768 // Größe des AT24C256 in Bytes
 
+#define MAX_WEBSOCKET_FRAME_SIZE 65535
+uint8_t websocket_frame_buffer[MAX_WEBSOCKET_FRAME_SIZE]; // Statischer Puffer
+
 /* Funktionsprototypen */
 
 /* Hauptfunktion der Netzwerkaufgabe */
@@ -166,12 +169,14 @@ void StartNetworkTask(void *argument)
                 close(sock);
                 websocket_connected = 0;
             } else {
+            	LOG_INFO("task_network.c: process_received_websocket_data");
                 process_received_websocket_data(sock, DATABUF, ret);
             }
         }
 
         /* Verarbeite ausgehende Nachrichten */
         if (websocket_connected) {
+        	LOG_INFO("task_network.c: process_websocket_messages");
             process_websocket_messages(sock);
         }
 
@@ -299,6 +304,7 @@ bool websocket_handshake(uint8_t sock)
 }
 
 void process_websocket_messages(uint8_t sock) {
+
     MessageForWebSocket* msg;
 
     while (osMessageQueueGet(xWebSocketQueueHandle, &msg, NULL, 0) == osOK) {
@@ -350,57 +356,45 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
 
     // Vorbereitung des WebSocket-Frames
     size_t frame_size;
-    uint8_t *websocket_frame;
+    size_t offset = 0;
 
     if (message_len <= 125) {
-        frame_size = 2 + 4 + message_len; // 2 Byte Header + 4 Byte Masking Key + Payload
+        websocket_frame_buffer[offset++] = 0x81; // FIN bit gesetzt, Opcode = 0x1 (Text)
+        websocket_frame_buffer[offset++] = 0x80 | (uint8_t)message_len; // Maskenbit gesetzt, Payload-Länge
     } else if (message_len <= 65535) {
-        frame_size = 4 + 4 + message_len; // 4 Byte Header (2 Byte Extended Payload Length) + 4 Byte Masking Key + Payload
+        websocket_frame_buffer[offset++] = 0x81; // FIN bit gesetzt, Opcode = 0x1 (Text)
+        websocket_frame_buffer[offset++] = 0x80 | 126; // Maskenbit gesetzt, Extended Payload-Länge folgt
+        websocket_frame_buffer[offset++] = (message_len >> 8) & 0xFF;
+        websocket_frame_buffer[offset++] = message_len & 0xFF;
     } else {
         LOG_ERROR("send_websocket_message: Message too long to be sent in a single WebSocket frame");
         return;
     }
 
-    websocket_frame = (uint8_t *)malloc(frame_size);
-    if (websocket_frame == NULL) {
-        LOG_ERROR("send_websocket_message: Failed to allocate memory for WebSocket frame");
-        return;
-    }
-
-    size_t offset = 0;
-
-    // Frame Header
-    websocket_frame[offset++] = 0x81; // FIN bit gesetzt, Opcode = 0x1 (Text)
-    if (message_len <= 125) {
-        websocket_frame[offset++] = 0x80 | (uint8_t)message_len; // Maskenbit gesetzt, Payload-Länge
-    } else if (message_len <= 65535) {
-        websocket_frame[offset++] = 0x80 | 126; // Maskenbit gesetzt, Extended Payload-Länge folgt
-        websocket_frame[offset++] = (message_len >> 8) & 0xFF;
-        websocket_frame[offset++] = message_len & 0xFF;
-    }
-
-    // Masking Key
+    // Masking Key generieren
     uint8_t masking_key[4];
     for (int i = 0; i < 4; i++) {
         masking_key[i] = rand() % 256;
     }
-    memcpy(&websocket_frame[offset], masking_key, 4);
+    memcpy(&websocket_frame_buffer[offset], masking_key, 4);
     offset += 4;
 
     // Maskiertes Payload
     for (size_t i = 0; i < message_len; i++) {
-        websocket_frame[offset + i] = json_message[i] ^ masking_key[i % 4];
+        websocket_frame_buffer[offset + i] = json_message[i] ^ masking_key[i % 4];
     }
+    offset += message_len;
+
+    frame_size = offset;
 
     LOG_INFO("send_websocket_message: Sending WebSocket frame with length: %lu", (unsigned long)frame_size);
 
     // Senden des Frames über den Socket
     int32_t total_sent = 0;
     while (total_sent < frame_size) {
-        int32_t sent = send(sock, websocket_frame + total_sent, frame_size - total_sent);
+        int32_t sent = send(sock, websocket_frame_buffer + total_sent, frame_size - total_sent);
         if (sent < 0) {
             LOG_ERROR("send_websocket_message: Failed to send WebSocket frame");
-            free(websocket_frame);
             return;
         }
         total_sent += sent;
@@ -408,8 +402,6 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
     }
 
     LOG_INFO("send_websocket_message: Sent JSON message:\r\n  JSON: %s", json_message);
-
-    free(websocket_frame);
 }
 
 
@@ -995,16 +987,27 @@ cJSON *controller_state_to_json(ControllerState *state) {
 }
 
 void send_json_over_websocket(const char *json_string) {
-    MessageForWebSocket msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.message_type = MESSAGE_TYPE_STATUS_RESPONSE;
-    strncpy(msg.json_payload, json_string, sizeof(msg.json_payload) - 1);
+    // Nachricht aus dem Nachrichtenpool zuweisen
+    MessageForWebSocket* msg = allocateMessage();
+    if (msg == NULL) {
+        LOG_ERROR("task_network.c: Failed to allocate message for send_json_over_websocket");
+        return;
+    }
 
-    // Fügen Sie die Nachricht zur WebSocket-Queue hinzu
+    // Nachricht initialisieren
+    msg->message_type = MESSAGE_TYPE_STATUS_RESPONSE;
+    strncpy(msg->json_payload, json_string, sizeof(msg->json_payload) - 1);
+    msg->json_payload[sizeof(msg->json_payload) - 1] = '\0'; // Sicherheitshalber terminieren
+
+    // Nachricht zur WebSocket-Queue hinzufügen
     if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
         LOG_ERROR("task_network.c: Failed to send JSON over WebSocket");
+        freeMessage(msg); // Nachricht freigeben, falls das Hinzufügen fehlschlägt
+    } else {
+        LOG_INFO("task_network.c: JSON message added to WebSocketQueue");
     }
 }
+
 
 void send_register_message() {
     MessageForWebSocket* msg = allocateMessage();

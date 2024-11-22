@@ -23,6 +23,7 @@ const char* device_to_string(uint8_t device);
 const char* target_to_string(uint8_t target);
 const char* action_to_string(uint8_t action);
 
+void initialize_message_pool();
 
 void freeMessage(MessageForWebSocket* msg);
 MessageForWebSocket* allocateMessage();

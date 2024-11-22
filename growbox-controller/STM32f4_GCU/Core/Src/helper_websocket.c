@@ -10,6 +10,14 @@
 
 MessagePoolItem messagePool[MESSAGE_POOL_SIZE];
 
+// Initialisierung des Nachrichtenpools und des Mutex
+void initialize_message_pool() {
+    // Initialisieren des Nachrichtenpools
+    for (int i = 0; i < MESSAGE_POOL_SIZE; i++) {
+        messagePool[i].inUse = false;
+        memset(&messagePool[i].message, 0, sizeof(MessageForWebSocket));
+    }
+}
 
 MessageForWebSocket* allocateMessage() {
     osMutexAcquire(gMessagePoolMutexHandle, osWaitForever);

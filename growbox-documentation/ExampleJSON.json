@@ -66,6 +66,19 @@
 }
 
 
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "TimeSync",
+    "payload": {
+        "current_time": "2024-12-31T23:59:59"
+    }
+}
+
+
+
 {
     "target_UUID": "003B001C3439471839303732",
     "current_time": "2024-12-31T23:59:59",
@@ -113,3 +126,4 @@
         ]
     }
 }
+

@@ -85,7 +85,7 @@ extern osMutexId_t gLoggerMutexHandle;
 extern osMutexId_t gConfigAvailableMutexHandle;
 extern osMutexId_t gStartTimeMutexHandle;
 extern osMutexId_t gMessagePoolMutexHandle;
-
+extern osMutexId_t gHeartbeatMutexHandle;
 
 extern osEventFlagsId_t gControllerEventGroupHandle;
 extern osEventFlagsId_t INITIALIZATION_COMPLETEHandle;

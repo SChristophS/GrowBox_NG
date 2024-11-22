@@ -39,6 +39,7 @@
 #include "uart_redirect.h"
 #include "wizchip_init.h"
 #include "logger.h"
+#include "helper_websocket.h"
 
 /* Tasks */
 #include "task_alive.h"
@@ -283,6 +284,14 @@ const osMutexAttr_t gMessagePoolMutex_attributes = {
   .cb_mem = &gMessagePoolMutexControlBlock,
   .cb_size = sizeof(gMessagePoolMutexControlBlock),
 };
+/* Definitions for gHeartbeatMutexHandle */
+osMutexId_t gHeartbeatMutexHandleHandle;
+osStaticMutexDef_t gHeartbeatMutexHandleControlBlock;
+const osMutexAttr_t gHeartbeatMutexHandle_attributes = {
+  .name = "gHeartbeatMutexHandle",
+  .cb_mem = &gHeartbeatMutexHandleControlBlock,
+  .cb_size = sizeof(gHeartbeatMutexHandleControlBlock),
+};
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
 osStaticEventGroupDef_t gControllerEventGroupControlBlock;
@@ -413,7 +422,8 @@ int main(void)
 
   GetSTM32UID(uidStr);
 
-
+  // Initialisieren des Nachrichtenpools und des zugehörigen Mutexes
+  initialize_message_pool();
 
   /* USER CODE END 2 */
 
@@ -443,6 +453,9 @@ int main(void)
 
   /* creation of gMessagePoolMutex */
   gMessagePoolMutexHandle = osMutexNew(&gMessagePoolMutex_attributes);
+
+  /* creation of gHeartbeatMutexHandle */
+  gHeartbeatMutexHandleHandle = osMutexNew(&gHeartbeatMutexHandle_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -1021,6 +1034,114 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartAliveTask */
+/**
+  * @brief  Function implementing the AliveTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartAliveTask */
+void StartAliveTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartNetworkTask */
+/**
+* @brief Function implementing the NetworkTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartNetworkTask */
+void StartNetworkTask(void *argument)
+{
+  /* USER CODE BEGIN StartNetworkTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartNetworkTask */
+}
+
+/* USER CODE BEGIN Header_StartWaterControllerTask */
+/**
+* @brief Function implementing the WaterController thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartWaterControllerTask */
+void StartWaterControllerTask(void *argument)
+{
+  /* USER CODE BEGIN StartWaterControllerTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartWaterControllerTask */
+}
+
+/* USER CODE BEGIN Header_StartLightTask */
+/**
+* @brief Function implementing the LightTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartLightTask */
+void StartLightTask(void *argument)
+{
+  /* USER CODE BEGIN StartLightTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartLightTask */
+}
+
+/* USER CODE BEGIN Header_StartSensorTask */
+/**
+* @brief Function implementing the SensorTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartSensorTask */
+void StartSensorTask(void *argument)
+{
+  /* USER CODE BEGIN StartSensorTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartSensorTask */
+}
+
+/* USER CODE BEGIN Header_StartHardwareTask */
+/**
+* @brief Function implementing the HardwareTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartHardwareTask */
+void StartHardwareTask(void *argument)
+{
+  /* USER CODE BEGIN StartHardwareTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartHardwareTask */
+}
 
 /**
   * @brief  Period elapsed callback in non blocking mode
