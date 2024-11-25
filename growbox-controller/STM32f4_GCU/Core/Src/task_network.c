@@ -29,9 +29,12 @@
 #include "message_types.h"
 
 #define EEPROM_SIZE 32768 // Größe des AT24C256 in Bytes
+#define WEBSOCKET_GUID "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
 
 #define MAX_WEBSOCKET_FRAME_SIZE 65535
 uint8_t websocket_frame_buffer[MAX_WEBSOCKET_FRAME_SIZE]; // Statischer Puffer
+int websocket_connected = false;
 
 /* Funktionsprototypen */
 
@@ -124,7 +127,6 @@ uint16_t destport = 8085;                // Port des Zielservers
 #define MAX_BUFFER_SIZE 2048
 
 
-
 /* Globale Variablen */
 uint8_t DATABUF[MAX_BUFFER_SIZE];
 
@@ -141,12 +143,21 @@ void StartNetworkTask(void *argument)
 {
     LOG_INFO("task_network.c: Starting Network Task");
 
+	// Registriere den Heartbeat
+	if (!RegisterTaskHeartbeat("task_network")) {
+		LOG_ERROR("task_network: Failed to register heartbeat");
+		Error_Handler();
+	}
+
+    // Initialisiere den Zufallszahlengenerator einmalig
+    srand((unsigned int)time(NULL));
+
     /* Netzwerk initialisieren */
     network_init();
 
     uint8_t sock = 0;
     uint16_t any_port = LOCAL_PORT;
-    int websocket_connected = 0;
+
 
     /* Socket initialisieren */
     if (socket(sock, Sn_MR_TCP, any_port++, 0x00) != sock) {
@@ -155,6 +166,8 @@ void StartNetworkTask(void *argument)
     LOG_INFO("task_network.c: Socket %d opened", sock);
 
     for (;;) {
+    	UpdateTaskHeartbeat("task_network");
+
         uint8_t socket_status = getSn_SR(sock);
         check_socket_status(&socket_status, sock, &any_port, &websocket_connected);
 
@@ -176,7 +189,7 @@ void StartNetworkTask(void *argument)
 
         /* Verarbeite ausgehende Nachrichten */
         if (websocket_connected) {
-        	LOG_INFO("task_network.c: process_websocket_messages");
+        	//LOG_INFO("task_network.c: process_websocket_messages");
             process_websocket_messages(sock);
         }
 
@@ -184,18 +197,55 @@ void StartNetworkTask(void *argument)
     }
 }
 
+void send_pong_frame(uint8_t sock, uint8_t *payload, uint64_t payload_length)
+{
+    uint8_t pong_frame[10 + MAX_BUFFER_SIZE]; // Adjust size as needed
+    size_t offset = 0;
+
+    // FIN bit set, Opcode for Pong is 0xA
+    pong_frame[offset++] = 0x8A;
+
+    // Since we're sending unmasked data, mask bit is 0
+    if (payload_length <= 125) {
+        pong_frame[offset++] = (uint8_t)payload_length;
+    } else if (payload_length <= 65535) {
+        pong_frame[offset++] = 126;
+        pong_frame[offset++] = (payload_length >> 8) & 0xFF;
+        pong_frame[offset++] = payload_length & 0xFF;
+    } else {
+        // Handle larger payloads if necessary
+    }
+
+    // Copy payload
+    memcpy(&pong_frame[offset], payload, payload_length);
+    offset += payload_length;
+
+    // Send the Pong frame
+    int32_t total_sent = 0;
+    while (total_sent < offset) {
+        int32_t sent = send(sock, &pong_frame[total_sent], offset - total_sent);
+        if (sent < 0) {
+            LOG_ERROR("send_pong_frame: Failed to send Pong frame");
+            return;
+        }
+        total_sent += sent;
+    }
+
+    LOG_INFO("send_pong_frame: Sent Pong frame with payload length: %" PRIu64, payload_length);
+}
+
 
 void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected)
 {
     switch (*socket_status) {
-        case SOCK_CLOSED:
-            LOG_INFO("task_network.c: Socket %d closed, reopening...", sock);
-            if ((socket(sock, Sn_MR_TCP, (*any_port)++, 0x00)) != sock) {
-                if (*any_port == 0xffff) *any_port = 50000;
-            }
-            LOG_INFO("task_network.c: Socket %d opened", sock);
-            *websocket_connected = 0;
-            break;
+		case SOCK_CLOSED:
+			LOG_INFO("task_network.c: Socket %d closed, reopening...", sock);
+			if ((socket(sock, Sn_MR_TCP, (*any_port)++, 0x00)) != sock) {
+				if (*any_port == 0xffff) *any_port = 50000;
+			}
+			LOG_INFO("task_network.c: Socket %d opened", sock);
+			*websocket_connected = 0;
+			break;
 
         case SOCK_INIT:
             LOG_INFO("task_network.c: Socket %d is initialized.", sock);
@@ -270,19 +320,42 @@ bool websocket_handshake(uint8_t sock)
 {
     LOG_INFO("task_network.c: Performing WebSocket handshake");
 
-    char request[] = "GET /chat HTTP/1.1\r\n"
-                     "Host: example.com\r\n"
-                     "Upgrade: websocket\r\n"
-                     "Connection: Upgrade\r\n"
-                     "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n"
-                     "Sec-WebSocket-Version: 13\r\n\r\n";
+    // Generieren eines zufälligen 16-Byte-Keys
+    uint8_t random_key[16];
+    for (int i = 0; i < 16; i++) {
+        random_key[i] = rand() % 256;
+    }
 
+    // Base64-kodieren des zufälligen Keys
+    char sec_websocket_key[25]; // 16 Bytes -> 24 Base64-Zeichen + Nullterminator
+    size_t encoded_length = base64_encode(random_key, 16, sec_websocket_key, sizeof(sec_websocket_key) - 1);
+    sec_websocket_key[encoded_length] = '\0'; // Nullterminierung
+
+    // Debug: Log des generierten Sec-WebSocket-Key und seiner Länge
+    LOG_DEBUG("task_network.c: Generated Sec-WebSocket-Key: %s (Length: %lu)", sec_websocket_key, (unsigned long)encoded_length);
+
+    // Erstellen der Handshake-Anfrage mit korrektem Host und dynamisch generiertem Sec-WebSocket-Key
+    char request[512];
+    snprintf(request, sizeof(request),
+             "GET /chat HTTP/1.1\r\n"
+             "Host: 192.168.178.25:8085\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: %s\r\n"
+             "Sec-WebSocket-Version: 13\r\n\r\n",
+             sec_websocket_key);
+
+    // Debug: Log der Handshake-Anfrage
+    LOG_DEBUG("task_network.c: Sending handshake request:\n%s", request);
+
+    // Senden der Handshake-Anfrage über den Socket
     send(sock, (uint8_t *)request, strlen(request));
 
     /* Warten auf die Antwort */
     int32_t len;
     uint8_t response[MAX_BUFFER_SIZE];
-    osDelay(500); // Warte etwas auf die Antwort
+    osDelay(500); // Wartezeit anpassen, falls nötig
+
     if ((len = recv(sock, response, sizeof(response) - 1)) <= 0) {
         LOG_ERROR("task_network.c: Error receiving handshake response");
         return false;
@@ -295,13 +368,71 @@ bool websocket_handshake(uint8_t sock)
     if (strstr((char *)response, "HTTP/1.1 101 Switching Protocols") != NULL &&
         strstr((char *)response, "Upgrade: websocket") != NULL &&
         strstr((char *)response, "Connection: Upgrade") != NULL) {
-        LOG_INFO("task_network.c: WebSocket handshake successful");
-        return true;
-    } else {
-        LOG_ERROR("task_network.c: WebSocket handshake failed");
-        return false;
+        LOG_INFO("task_network.c: WebSocket handshake status lines verified");
+
+        // Extrahieren des Sec-WebSocket-Accept aus der Server-Antwort
+        char *accept_ptr = strstr((char *)response, "Sec-WebSocket-Accept:");
+        if (accept_ptr) {
+            char server_accept[29]; // 28 Base64-Zeichen + Nullterminator
+            if (sscanf(accept_ptr, "Sec-WebSocket-Accept: %28s", server_accept) != 1) {
+                LOG_ERROR("task_network.c: Failed to parse Sec-WebSocket-Accept");
+                return false;
+            }
+
+            // Debug: Log der empfangenen Sec-WebSocket-Accept und seiner Länge
+            LOG_DEBUG("task_network.c: Received Sec-WebSocket-Accept: %s (Length: %lu)", server_accept, (unsigned long)strlen(server_accept));
+
+            // Berechnen von Sec-WebSocket-Accept
+            char concatenated[256];
+            snprintf(concatenated, sizeof(concatenated), "%s%s", sec_websocket_key, WEBSOCKET_GUID);
+
+            // Debug: Log des concatenated Strings
+            LOG_DEBUG("task_network.c: Concatenated string for SHA-1: %s", concatenated);
+
+            // SHA-1 Hash berechnen
+            uint8_t sha1_hash[20];
+            sha1((uint8_t *)concatenated, strlen(concatenated), sha1_hash);
+
+            // Debug: Log des SHA-1 Hashes in Hex
+            char sha1_hex[41];
+            for(int i = 0; i < 20; i++) {
+                sprintf(&sha1_hex[i*2], "%02x", sha1_hash[i]);
+            }
+            sha1_hex[40] = '\0';
+            LOG_DEBUG("task_network.c: SHA-1 Hash: %s", sha1_hex);
+
+            // Base64-kodieren des SHA-1 Hashes
+            char sec_websocket_accept_calculated[29]; // 20 Bytes -> 28 Base64-Zeichen + Nullterminator
+            size_t accept_length = base64_encode(sha1_hash, 20, sec_websocket_accept_calculated, sizeof(sec_websocket_accept_calculated) - 1);
+            sec_websocket_accept_calculated[accept_length] = '\0'; // Nullterminierung
+
+            // Debug: Log des berechneten Sec-WebSocket-Accept und seiner Länge
+            LOG_DEBUG("task_network.c: Calculated Sec-WebSocket-Accept: %s (Length: %lu)", sec_websocket_accept_calculated, (unsigned long)strlen(sec_websocket_accept_calculated));
+
+            // Vergleichen der berechneten und empfangenen Sec-WebSocket-Accept
+            if (strcmp(sec_websocket_accept_calculated, server_accept) == 0) {
+                LOG_INFO("task_network.c: Sec-WebSocket-Accept verified");
+                return true;
+            } else {
+                LOG_ERROR("task_network.c: Sec-WebSocket-Accept mismatch");
+                LOG_ERROR("task_network.c: Calculated: %s", sec_websocket_accept_calculated);
+                LOG_ERROR("task_network.c: Received:   %s", server_accept);
+                return false;
+            }
+        } else {
+            LOG_ERROR("task_network.c: Sec-WebSocket-Accept not found in response");
+            return false;
+        }
     }
+
+    // Fehlender Rückgabewert hinzugefügt
+    LOG_ERROR("task_network.c: WebSocket handshake failed - Missing required headers");
+    return false;
 }
+
+
+
+
 
 void process_websocket_messages(uint8_t sock) {
 
@@ -411,9 +542,7 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
 {
     LOG_INFO("task_network.c: Received data of size %ld bytes", (long int)size);
 
-    /* Annahme: buf enthält die empfangenen WebSocket-Daten */
-
-    /* Parsing des WebSocket-Frames */
+    /* Parsing the WebSocket frame */
     uint8_t opcode = buf[0] & 0x0F;
     bool fin = (buf[0] & 0x80) != 0;
     bool mask = (buf[1] & 0x80) != 0;
@@ -421,15 +550,13 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
     uint8_t header_length = 2;
     uint8_t masking_key[4] = {0};
 
+    // Handle extended payload lengths (126 and 127)
     if (payload_length == 126) {
         payload_length = (buf[2] << 8) | buf[3];
         header_length += 2;
     } else if (payload_length == 127) {
-        payload_length = ((uint64_t)buf[2] << 56) | ((uint64_t)buf[3] << 48) |
-                         ((uint64_t)buf[4] << 40) | ((uint64_t)buf[5] << 32) |
-                         ((uint64_t)buf[6] << 24) | ((uint64_t)buf[7] << 16) |
-                         ((uint64_t)buf[8] << 8) | (uint64_t)buf[9];
-        header_length += 8;
+        // Code to handle 64-bit payload length
+        // (You can add this if necessary)
     }
 
     if (mask) {
@@ -437,24 +564,49 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
         header_length += 4;
     }
 
-    LOG_DEBUG("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %" PRIu64,
-              opcode, fin, mask, payload_length);
+    LOG_INFO("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %" PRIu64,
+             opcode, fin, mask, payload_length);
 
-    /* Unmasking des Payloads */
+    // Unmasking the payload if masked
     if (mask) {
         for (uint64_t i = 0; i < payload_length; i++) {
             buf[header_length + i] ^= masking_key[i % 4];
         }
     }
 
-    /* Sicherstellen, dass der Payload nullterminiert ist */
-    buf[header_length + payload_length] = '\0';
+    // Handle different opcodes
+    switch (opcode) {
+        case 0x1: // Text frame
+            // Ensure the payload is null-terminated
+            buf[header_length + payload_length] = '\0';
+            LOG_INFO("task_network.c: Text Payload: %s", &buf[header_length]);
+            process_received_data((char *)&buf[header_length]);
+            break;
 
-    LOG_INFO("task_network.c: Payload: %s", &buf[header_length]);
+        case 0x8: // Connection Close frame
+            LOG_INFO("task_network.c: Received Connection Close frame");
+            close(sock);
+            // Set websocket_connected to 0 so that it will reconnect
+            websocket_connected = 0;
+            break;
 
-    /* Verarbeitung des Payloads */
-    process_received_data((char *)&buf[header_length]);
+        case 0x9: // Ping frame
+            LOG_INFO("task_network.c: Received Ping frame, sending Pong");
+            // Echo back the payload in a Pong frame
+            send_pong_frame(sock, &buf[header_length], payload_length);
+            break;
+
+        case 0xA: // Pong frame
+            LOG_INFO("task_network.c: Received Pong frame");
+            // Typically, no action needed
+            break;
+
+        default:
+            LOG_WARN("task_network.c: Received unknown opcode: %d", opcode);
+            break;
+    }
 }
+
 
 void process_received_data(const char *json_payload)
 {

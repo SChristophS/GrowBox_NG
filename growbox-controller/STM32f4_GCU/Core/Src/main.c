@@ -89,7 +89,7 @@ UART_HandleTypeDef huart2;
 
 /* Definitions for AliveTask */
 osThreadId_t AliveTaskHandle;
-uint32_t AliveTaskBuffer[ 128 ];
+uint32_t AliveTaskBuffer[ 512 ];
 osStaticThreadDef_t AliveTaskControlBlock;
 const osThreadAttr_t AliveTask_attributes = {
   .name = "AliveTask",
@@ -108,7 +108,7 @@ const osThreadAttr_t NetworkTask_attributes = {
 };
 /* Definitions for WaterController */
 osThreadId_t WaterControllerHandle;
-uint32_t WaterControllerBuffer[ 512 ];
+uint32_t WaterControllerBuffer[ 1024 ];
 osStaticThreadDef_t WaterControllerControlBlock;
 const osThreadAttr_t WaterController_attributes = {
   .name = "WaterController",
@@ -120,7 +120,7 @@ const osThreadAttr_t WaterController_attributes = {
 };
 /* Definitions for LightTask */
 osThreadId_t LightTaskHandle;
-uint32_t LightTaskBuffer[ 512 ];
+uint32_t LightTaskBuffer[ 1024 ];
 osStaticThreadDef_t LightTaskControlBlock;
 const osThreadAttr_t LightTask_attributes = {
   .name = "LightTask",
@@ -189,7 +189,7 @@ const osMessageQueueAttr_t xWebSocketQueue_attributes = {
 };
 /* Definitions for xHardwareQueue */
 osMessageQueueId_t xHardwareQueueHandle;
-uint8_t xHardwareQueueBuffer[ 1 * 4 ];
+uint8_t xHardwareQueueBuffer[ 2 * 8 ];
 osStaticMessageQDef_t xHardwareQueueControlBlock;
 const osMessageQueueAttr_t xHardwareQueue_attributes = {
   .name = "xHardwareQueue",
@@ -284,13 +284,13 @@ const osMutexAttr_t gMessagePoolMutex_attributes = {
   .cb_mem = &gMessagePoolMutexControlBlock,
   .cb_size = sizeof(gMessagePoolMutexControlBlock),
 };
-/* Definitions for gHeartbeatMutexHandle */
-osMutexId_t gHeartbeatMutexHandleHandle;
-osStaticMutexDef_t gHeartbeatMutexHandleControlBlock;
-const osMutexAttr_t gHeartbeatMutexHandle_attributes = {
-  .name = "gHeartbeatMutexHandle",
-  .cb_mem = &gHeartbeatMutexHandleControlBlock,
-  .cb_size = sizeof(gHeartbeatMutexHandleControlBlock),
+/* Definitions for gHeartbeatMutex */
+osMutexId_t gHeartbeatMutexHandle;
+osStaticMutexDef_t gHeartbeatMutexControlBlock;
+const osMutexAttr_t gHeartbeatMutex_attributes = {
+  .name = "gHeartbeatMutex",
+  .cb_mem = &gHeartbeatMutexControlBlock,
+  .cb_size = sizeof(gHeartbeatMutexControlBlock),
 };
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
@@ -318,6 +318,9 @@ bool automaticMode;
 bool gConfigAvailable;
 struct tm gStartTimeTm;
 bool gTimeSynchronized;
+
+// Heartbeat-Daten (definiert global)
+TaskHeartbeat task_heartbeats[MAX_MONITORED_TASKS];
 
 
 /* USER CODE END PV */
@@ -362,6 +365,7 @@ void GetSTM32UID(char *uidStr) {
 }
 
 
+
 /* USER CODE END 0 */
 
 /**
@@ -404,10 +408,17 @@ int main(void)
 
   LOG_INFO("main.c:\t NextGeneration Growbox Project");
 
+
+
   resetAssert();
   HAL_Delay(300);
   resetDeassert();
   HAL_Delay(300);
+
+  // Initialisieren des Nachrichtenpools und des zugehörigen Mutexes
+  initialize_message_pool();
+
+
 
 
   // Initialisiere gControllerState
@@ -422,8 +433,7 @@ int main(void)
 
   GetSTM32UID(uidStr);
 
-  // Initialisieren des Nachrichtenpools und des zugehörigen Mutexes
-  initialize_message_pool();
+
 
   /* USER CODE END 2 */
 
@@ -454,8 +464,8 @@ int main(void)
   /* creation of gMessagePoolMutex */
   gMessagePoolMutexHandle = osMutexNew(&gMessagePoolMutex_attributes);
 
-  /* creation of gHeartbeatMutexHandle */
-  gHeartbeatMutexHandleHandle = osMutexNew(&gHeartbeatMutexHandle_attributes);
+  /* creation of gHeartbeatMutex */
+  gHeartbeatMutexHandle = osMutexNew(&gHeartbeatMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -480,7 +490,7 @@ int main(void)
   xWebSocketQueueHandle = osMessageQueueNew (3, 6, &xWebSocketQueue_attributes);
 
   /* creation of xHardwareQueue */
-  xHardwareQueueHandle = osMessageQueueNew (1, 4, &xHardwareQueue_attributes);
+  xHardwareQueueHandle = osMessageQueueNew (2, 8, &xHardwareQueue_attributes);
 
   /* creation of xWaterCommandQueue */
   xWaterCommandQueueHandle = osMessageQueueNew (3, 4, &xWaterCommandQueue_attributes);
@@ -1033,115 +1043,44 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+// Funktion zur Initialisierung der Heartbeat-Daten
+void InitializeTaskHeartbeats(void) {
+    osMutexAcquire(gHeartbeatMutexHandle, osWaitForever);
+    for (int i = 0; i < MAX_MONITORED_TASKS; i++) {
+        task_heartbeats[i].task_name = NULL;
+        task_heartbeats[i].last_heartbeat = 0;
+    }
+    osMutexRelease(gHeartbeatMutexHandle);
+}
+
+// Funktion zur Registrierung einer Task
+bool RegisterTaskHeartbeat(const char *task_name) {
+    bool registered = false;
+    osMutexAcquire(gHeartbeatMutexHandle, osWaitForever);
+    for (int i = 0; i < MAX_MONITORED_TASKS; i++) {
+        if (task_heartbeats[i].task_name == NULL) {
+            task_heartbeats[i].task_name = task_name;
+            task_heartbeats[i].last_heartbeat = HAL_GetTick();
+            registered = true;
+            break;
+        }
+    }
+    osMutexRelease(gHeartbeatMutexHandle);
+    return registered;
+}
+
+// Funktion zur Aktualisierung des Heartbeats einer Task
+void UpdateTaskHeartbeat(const char *task_name) {
+    osMutexAcquire(gHeartbeatMutexHandle, osWaitForever);
+    for (int i = 0; i < MAX_MONITORED_TASKS; i++) {
+        if (task_heartbeats[i].task_name != NULL && strcmp(task_heartbeats[i].task_name, task_name) == 0) {
+            task_heartbeats[i].last_heartbeat = HAL_GetTick();
+            break;
+        }
+    }
+    osMutexRelease(gHeartbeatMutexHandle);
+}
 /* USER CODE END 4 */
-
-/* USER CODE BEGIN Header_StartAliveTask */
-/**
-  * @brief  Function implementing the AliveTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartAliveTask */
-void StartAliveTask(void *argument)
-{
-  /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END 5 */
-}
-
-/* USER CODE BEGIN Header_StartNetworkTask */
-/**
-* @brief Function implementing the NetworkTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartNetworkTask */
-void StartNetworkTask(void *argument)
-{
-  /* USER CODE BEGIN StartNetworkTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartNetworkTask */
-}
-
-/* USER CODE BEGIN Header_StartWaterControllerTask */
-/**
-* @brief Function implementing the WaterController thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartWaterControllerTask */
-void StartWaterControllerTask(void *argument)
-{
-  /* USER CODE BEGIN StartWaterControllerTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartWaterControllerTask */
-}
-
-/* USER CODE BEGIN Header_StartLightTask */
-/**
-* @brief Function implementing the LightTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartLightTask */
-void StartLightTask(void *argument)
-{
-  /* USER CODE BEGIN StartLightTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartLightTask */
-}
-
-/* USER CODE BEGIN Header_StartSensorTask */
-/**
-* @brief Function implementing the SensorTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartSensorTask */
-void StartSensorTask(void *argument)
-{
-  /* USER CODE BEGIN StartSensorTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartSensorTask */
-}
-
-/* USER CODE BEGIN Header_StartHardwareTask */
-/**
-* @brief Function implementing the HardwareTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartHardwareTask */
-void StartHardwareTask(void *argument)
-{
-  /* USER CODE BEGIN StartHardwareTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartHardwareTask */
-}
 
 /**
   * @brief  Period elapsed callback in non blocking mode

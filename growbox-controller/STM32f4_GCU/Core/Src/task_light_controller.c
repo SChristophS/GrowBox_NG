@@ -36,11 +36,22 @@ void StartLightTask(void *argument)
 {
     LOG_INFO("task_light_controller:\tStarting Light Control Task");
 
-    // initial 0
+    // Registriere den Heartbeat
+    if (!RegisterTaskHeartbeat("task_light_controller")) {
+        LOG_ERROR("task_light_controller: Failed to register heartbeat");
+        Error_Handler();
+    }
+    LOG_INFO("task_light_controller:\tHeartbeat registered successfully");
+
+    // Initialer Lichtstatus
     ControlLight(0);
+    LOG_INFO("task_light_controller:\tLight intensity set to 0 initially");
 
     LOG_INFO("task_light_controller:\tWaiting for 5 seconds");
-    vTaskDelay(pdMS_TO_TICKS(5000));
+
+
+
+
     LOG_INFO("task_light_controller:\tWaiting done");
 
     // Variablen für die Lichtsteuerung
@@ -83,6 +94,7 @@ void StartLightTask(void *argument)
         osMutexRelease(gStartTimeMutexHandle);
 
         configLoaded = true;
+        LOG_INFO("task_light_controller:\tConfiguration loaded successfully at startup");
     } else {
         LOG_WARN("task_light_controller:\tNo configuration available at startup");
         configLoaded = false;
@@ -90,14 +102,21 @@ void StartLightTask(void *argument)
 
     for (;;)
     {
+        LOG_DEBUG("task_light_controller:\tEntering main loop iteration");
+        osDelay(500);
+        // Heartbeat aktualisieren
+        UpdateTaskHeartbeat("task_light_controller");
+
         // 2. Manuelle Befehle prüfen und verarbeiten
         handle_manual_override(&receivedCommand, &manualOverride, &manualDesiredIntensity);
         if (manualOverride)
         {
             // Manuelle Übersteuerung aktiv
+            LOG_INFO("task_light_controller:\tManual override activated with intensity: %d", manualDesiredIntensity);
             achieve_light_intensity(manualDesiredIntensity);
+            LOG_INFO("task_light_controller:\tProcessed manual override to intensity %d", manualDesiredIntensity);
             manualOverride = false;
-            vTaskDelay(pdMS_TO_TICKS(100));
+            //vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
@@ -143,18 +162,20 @@ void StartLightTask(void *argument)
         if (!configLoaded || finished)
         {
             LOG_DEBUG("task_light_controller:\tNo configuration loaded or schedules are finished");
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            LOG_INFO("task_light_controller:\tTurning off light as there is no active schedule");
+            achieve_light_intensity(0);
+            //vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
 
         // 5. Warten bis Startzeit erreicht ist
         if (timeSynchronized && !scheduleAdjusted)
         {
+            LOG_INFO("task_light_controller:\tChecking if start time has been reached");
             if (!wait_for_start_time(&startTimeTm)) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-
-                LOG_DEBUG("task_light_controller:\tWhile waiting switching Light Off");
+                LOG_INFO("task_light_controller:\tCurrent time is before start time. Turning off light.");
                 achieve_light_intensity(0);
+                //vTaskDelay(pdMS_TO_TICKS(1000));
                 continue;
             }
 
@@ -162,13 +183,15 @@ void StartLightTask(void *argument)
             struct tm currentTimeTm;
             if (!get_current_time(&currentTimeTm)) {
                 LOG_ERROR("task_light_controller:\tFailed to get current time");
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                //vTaskDelay(pdMS_TO_TICKS(1000));
                 continue;
             }
 
             time_t currentSeconds = tm_to_seconds(&currentTimeTm);
             time_t startSeconds = tm_to_seconds(&startTimeTm);
             time_t elapsedTime = currentSeconds - startSeconds;
+
+            LOG_DEBUG("task_light_controller:\tAdjusting schedule based on elapsed time: %ld seconds", elapsedTime);
 
             adjust_schedule_based_on_elapsed_time(
                 growConfig.ledSchedules,
@@ -194,11 +217,12 @@ void StartLightTask(void *argument)
         {
             LOG_INFO("task_light_controller:\tAutomatic mode is disabled. Turning off light.");
             achieve_light_intensity(0);
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            //vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
 
         // 8. Lichtzeitplan verarbeiten
+        LOG_DEBUG("task_light_controller:\tProcessing light schedule");
         process_light_schedule(
             &growConfig,
             &scheduleIndex,
@@ -211,7 +235,7 @@ void StartLightTask(void *argument)
         );
 
         // Kurze Verzögerung vor der nächsten Iteration
-        vTaskDelay(pdMS_TO_TICKS(100));
+        //vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -423,30 +447,35 @@ void process_light_schedule(
                 if (*currentState == LIGHT_OFF) {
                     // Licht einschalten
                     LOG_INFO("task_light_controller:\tTurning light ON (Schedule %d, Repetition %d)", *scheduleIndex, *repetitionIndex);
-                    *lightIntensity = 100; // Maximale Intensität
+                    *lightIntensity = 0;
                     achieve_light_intensity(*lightIntensity);
                     *currentState = LIGHT_ON;
                     *phaseDuration = schedule->durationOn * 1000; // in Millisekunden
+                    LOG_DEBUG("task_light_controller:\tStarted LIGHT_ON phase for %lu ms", *phaseDuration);
                 } else {
                     // Licht ausschalten
                     LOG_INFO("task_light_controller:\tTurning light OFF (Schedule %d, Repetition %d)", *scheduleIndex, *repetitionIndex);
-                    *lightIntensity = 0;
+                    *lightIntensity = 100;
                     achieve_light_intensity(*lightIntensity);
                     *currentState = LIGHT_OFF;
                     *phaseDuration = schedule->durationOff * 1000; // in Millisekunden
                     (*repetitionIndex)++;
+                    LOG_DEBUG("task_light_controller:\tStarted LIGHT_OFF phase for %lu ms", *phaseDuration);
                 }
                 *phaseStartTime = osKernelGetTickCount();
             } else {
                 // Überprüfe, ob die Phase abgeschlossen ist
                 uint32_t elapsedTimeMs = osKernelGetTickCount() - *phaseStartTime;
+                LOG_DEBUG("task_light_controller:\tPhase elapsed time: %lu ms / %lu ms", elapsedTimeMs, *phaseDuration);
                 if (elapsedTimeMs >= *phaseDuration) {
                     // Beende die aktuelle Phase
+                    LOG_INFO("task_light_controller:\tPhase duration completed. Preparing for next phase.");
                     *phaseDuration = 0; // Bereit für die nächste Phase
                 }
             }
         } else {
             // Nächster Zeitplan
+            LOG_INFO("task_light_controller:\tCompleted all repetitions for Schedule %d. Moving to next schedule.", *scheduleIndex);
             (*scheduleIndex)++;
             *repetitionIndex = 0;
             *currentState = LIGHT_OFF;
@@ -459,6 +488,7 @@ void process_light_schedule(
         *finished = true;
 
         // Licht sicherheitshalber ausschalten
+        LOG_INFO("task_light_controller:\tEnsuring light is turned off.");
         *lightIntensity = 0;
         achieve_light_intensity(*lightIntensity);
     }
@@ -494,27 +524,28 @@ void ControlLight(uint8_t lightIntensity) {
     cmd.intensity = lightIntensity;
 
     // Sende Befehl an Hardware-Task
-    osMessageQueuePut(xHardwareQueueHandle, &cmd, 0, 0);
+    osStatus_t status = osMessageQueuePut(xHardwareQueueHandle, &cmd, 0, 0);
+    if (status != osOK) {
+        LOG_ERROR("task_light_controller:\tFailed to put HardwareCommand in queue. Status: %d", status);
+    }
 }
+
 
 void achieve_light_intensity(uint8_t intensity)
 {
     LOG_DEBUG("task_light_controller:\tSetting light intensity to %d", intensity);
 
-    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
     if (gControllerState.lightIntensity != intensity) {
         UpdateLightControllerState(intensity);
         ControlLight(intensity);
+        LOG_INFO("task_light_controller:\tLight intensity changed to %d", intensity);
     }
     else {
-    	LOG_DEBUG("task_light_controller:\tNot necesarry to send new command, intensity already achieved");
-    	LOG_DEBUG("task_light_controller:\tgControllerState.lightIntensity = %d", gControllerState.lightIntensity);
-    	LOG_DEBUG("task_light_controller:\tsoll Wert = %d", intensity);
+        LOG_DEBUG("task_light_controller:\tNo change needed. Current intensity: %d, Desired intensity: %d",
+                  gControllerState.lightIntensity, intensity);
     }
-    osMutexRelease(gControllerStateMutexHandle);
+}
 
-
-};
 
 
 time_t get_current_timestamp(void)

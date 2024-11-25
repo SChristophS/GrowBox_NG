@@ -45,12 +45,19 @@ void process_watering_schedule(
 
 void StartWaterControllerTask(void *argument)
 {
-
-	LOG_INFO("task_water_controller:\tWaiting for 5 seconds");
-	    vTaskDelay(pdMS_TO_TICKS(5000));
-	    LOG_INFO("task_water_controller:\tWaiting done");
-
     LOG_INFO("task_water_controller:\tStarting Water Controller Task");
+
+    // Registriere den Heartbeat
+    if (!RegisterTaskHeartbeat("task_water_controller")) {
+        LOG_ERROR("task_water_controller: Failed to register heartbeat");
+        Error_Handler();
+    }
+    LOG_INFO("task_water_controller:\tHeartbeat registered successfully");
+
+    LOG_INFO("task_water_controller:\tWaiting for 5 seconds");
+    //vTaskDelay(pdMS_TO_TICKS(5000));
+    osDelay(5000);
+    LOG_INFO("task_water_controller:\tWaiting done");
 
     // Variablen für die Wassersteuerung
     GrowCycleConfig growConfig;
@@ -92,6 +99,7 @@ void StartWaterControllerTask(void *argument)
         osMutexRelease(gStartTimeMutexHandle);
 
         configLoaded = true;
+        LOG_INFO("task_water_controller:\tConfiguration loaded successfully at startup");
     } else {
         LOG_WARN("task_water_controller:\tNo configuration available at startup");
         configLoaded = false;
@@ -99,6 +107,12 @@ void StartWaterControllerTask(void *argument)
 
     for (;;)
     {
+        LOG_DEBUG("task_water_controller:\tEntering main loop iteration");
+        osDelay(500);
+
+        // Heartbeat aktualisieren
+        UpdateTaskHeartbeat("task_water_controller");
+
         // 2. Manuelle Befehle prüfen und verarbeiten
         handle_manual_override(&receivedCommand, &manualOverride, &manualDesiredState);
         if (manualOverride)
@@ -109,8 +123,11 @@ void StartWaterControllerTask(void *argument)
             } else if (manualDesiredState == WATER_STATE_EMPTY) {
                 achieve_water_state_empty();
             }
+            LOG_INFO("task_water_controller:\tProcessed manual override to state '%s'",
+                     (manualDesiredState == WATER_STATE_FULL) ? "FULL" : "EMPTY");
             manualOverride = false;
-            vTaskDelay(pdMS_TO_TICKS(100));
+            //vTaskDelay(pdMS_TO_TICKS(100));
+
             continue;
         }
 
@@ -153,7 +170,7 @@ void StartWaterControllerTask(void *argument)
         if (!configLoaded || finished)
         {
             LOG_DEBUG("task_water_controller:\tNo configuration loaded or schedules are finished");
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            //vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
 
@@ -161,7 +178,8 @@ void StartWaterControllerTask(void *argument)
         if (timeSynchronized && !scheduleAdjusted)
         {
             if (!wait_for_start_time(&startTimeTm)) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                LOG_INFO("task_water_controller:\tWaiting for start time to be reached");
+                //vTaskDelay(pdMS_TO_TICKS(1000));
                 continue;
             }
 
@@ -169,13 +187,15 @@ void StartWaterControllerTask(void *argument)
             struct tm currentTimeTm;
             if (!get_current_time(&currentTimeTm)) {
                 LOG_ERROR("task_water_controller:\tFailed to get current time");
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                //vTaskDelay(pdMS_TO_TICKS(1000));
                 continue;
             }
 
             time_t currentSeconds = tm_to_seconds(&currentTimeTm);
             time_t startSeconds = tm_to_seconds(&startTimeTm);
             time_t elapsedTime = currentSeconds - startSeconds;
+
+            LOG_DEBUG("task_water_controller:\tAdjusting schedule based on elapsed time: %ld seconds", elapsedTime);
 
             adjust_schedule_based_on_elapsed_time(
                 growConfig.wateringSchedules,
@@ -196,13 +216,14 @@ void StartWaterControllerTask(void *argument)
         bool isAutomaticMode = automaticMode;
         osMutexRelease(gAutomaticModeHandle);
 
+        LOG_DEBUG("task_water_controller:\tAutomatic mode status: %s", isAutomaticMode ? "ON" : "OFF");
+
         if (!isAutomaticMode)
         {
-        	LOG_DEBUG("task_water_controller:\tAutomatic mode status: %s", isAutomaticMode ? "ON" : "OFF");
             LOG_INFO("task_water_controller:\tAutomatic mode is disabled. Turning pumps off.");
             ControlPump(false, PUMP_ZULAUF);
             ControlPump(false, PUMP_ABLAUF);
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            //vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
 
@@ -219,9 +240,10 @@ void StartWaterControllerTask(void *argument)
         );
 
         // Kurze Verzögerung vor der nächsten Iteration
-        vTaskDelay(pdMS_TO_TICKS(100));
+        //vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
+
 
 /* Implementierung der Hilfsfunktionen */
 
@@ -360,8 +382,8 @@ void process_watering_schedule(
     uint32_t *phaseStartTime,
     uint32_t *phaseDuration,
     bool *finished,
-    bool *isPumping)
-{
+    bool *isPumping
+) {
     if (*scheduleIndex < growConfig->wateringScheduleCount) {
         WateringSchedule *schedule = &growConfig->wateringSchedules[*scheduleIndex];
 
@@ -369,34 +391,94 @@ void process_watering_schedule(
             // Starten der Phase, falls nicht bereits laufend
             if (*phaseDuration == 0) {
                 if (*currentPhase == PHASE_FULL) {
-                    // Start der Füllphase
-                    LOG_INFO("task_water_controller:\tStarting PHASE_FULL (Schedule %d, Repetition %d)", *scheduleIndex, *repetitionIndex);
-                    achieve_water_state_full();
-                    *phaseDuration = schedule->duration_full * 1000; // in Millisekunden
+                    // Überprüfen, ob der Zustand 'FULL' bereits erreicht ist
+                    LOG_DEBUG("task_water_controller:\tChecking if state 'FULL' is already achieved.");
+                    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+                    bool sensorOben = gControllerState.sensorOben;
+                    osMutexRelease(gControllerStateMutexHandle);
+
+                    if (sensorOben) {
+                        LOG_INFO("task_water_controller:\tState 'FULL' already achieved. Skipping PHASE_FULL.");
+                        // Wechsel zur nächsten Phase
+                        *currentPhase = PHASE_EMPTY;
+                        (*repetitionIndex)++;
+                        LOG_DEBUG("task_water_controller:\tSwitched to PHASE_EMPTY and incremented repetitionIndex to %d", *repetitionIndex);
+                        // Weiter zur nächsten Phase ohne die Füllphase zu starten
+                    } else {
+                        // Start der Füllphase
+                        LOG_INFO("task_water_controller:\tStarting PHASE_FULL (Schedule %d, Repetition %d)", *scheduleIndex, *repetitionIndex);
+                        ControlPump(true, PUMP_ZULAUF);
+                        ControlPump(false, PUMP_ABLAUF);
+                        *phaseDuration = schedule->duration_full * 1000; // in Millisekunden
+                        *phaseStartTime = osKernelGetTickCount();
+                        LOG_DEBUG("task_water_controller:\tPHASE_FULL started with duration %lu ms", *phaseDuration);
+                    }
                 } else {
-                    // Start der Entleerungsphase
-                    LOG_INFO("task_water_controller:\tStarting PHASE_EMPTY (Schedule %d, Repetition %d)", *scheduleIndex, *repetitionIndex);
-                    achieve_water_state_empty();
-                    *phaseDuration = schedule->duration_empty * 1000; // in Millisekunden
+                    // Überprüfen, ob der Zustand 'EMPTY' bereits erreicht ist
+                    LOG_DEBUG("task_water_controller:\tChecking if state 'EMPTY' is already achieved.");
+                    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+                    bool sensorOben = gControllerState.sensorOben;
+                    bool sensorUnten = gControllerState.sensorUnten;
+                    osMutexRelease(gControllerStateMutexHandle);
+
+                    if (!sensorOben && !sensorUnten) {
+                        LOG_INFO("task_water_controller:\tState 'EMPTY' already achieved. Skipping PHASE_EMPTY.");
+                        // Wechsel zur nächsten Phase
+                        *currentPhase = PHASE_FULL;
+                        (*repetitionIndex)++;
+                        LOG_DEBUG("task_water_controller:\tSwitched to PHASE_FULL and incremented repetitionIndex to %d", *repetitionIndex);
+                        // Weiter zur nächsten Phase ohne die Entleerungsphase zu starten
+                    } else {
+                        // Start der Entleerungsphase
+                        LOG_INFO("task_water_controller:\tStarting PHASE_EMPTY (Schedule %d, Repetition %d)", *scheduleIndex, *repetitionIndex);
+                        ControlPump(false, PUMP_ZULAUF);
+                        ControlPump(true, PUMP_ABLAUF);
+                        *phaseDuration = schedule->duration_empty * 1000; // in Millisekunden
+                        *phaseStartTime = osKernelGetTickCount();
+                        LOG_DEBUG("task_water_controller:\tPHASE_EMPTY started with duration %lu ms", *phaseDuration);
+                    }
                 }
-                *phaseStartTime = osKernelGetTickCount();
             } else {
                 // Überprüfe, ob die Phase abgeschlossen ist
                 uint32_t elapsedTimeMs = osKernelGetTickCount() - *phaseStartTime;
+                LOG_DEBUG("task_water_controller:\tPhase elapsed time: %lu ms / %lu ms", elapsedTimeMs, *phaseDuration);
                 if (elapsedTimeMs >= *phaseDuration) {
                     // Beende die aktuelle Phase
+                    LOG_INFO("task_water_controller:\tPhase duration completed. Preparing for next phase.");
                     *phaseDuration = 0; // Bereit für die nächste Phase
                     // Wechsel zur nächsten Phase
                     if (*currentPhase == PHASE_FULL) {
                         *currentPhase = PHASE_EMPTY;
+                        LOG_DEBUG("task_water_controller:\tSwitched to PHASE_EMPTY.");
                     } else {
                         *currentPhase = PHASE_FULL;
                         (*repetitionIndex)++;
+                        LOG_INFO("task_water_controller:\tCompleted PHASE_EMPTY. Incrementing repetitionIndex to %d", *repetitionIndex);
+                        LOG_DEBUG("task_water_controller:\tSwitched to PHASE_FULL.");
+                    }
+                } else {
+                    // Überprüfen Sie den aktuellen Sensorstatus, um vorzeitig zu wechseln
+                    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+                    bool sensorOben = gControllerState.sensorOben;
+                    bool sensorUnten = gControllerState.sensorUnten;
+                    osMutexRelease(gControllerStateMutexHandle);
+
+                    if (*currentPhase == PHASE_FULL && sensorOben) {
+                        LOG_INFO("task_water_controller:\tState 'FULL' achieved before phase duration. Switching to PHASE_EMPTY.");
+                        *currentPhase = PHASE_EMPTY;
+                        (*repetitionIndex)++;
+                        *phaseDuration = 0;
+                    } else if (*currentPhase == PHASE_EMPTY && !sensorOben && !sensorUnten) {
+                        LOG_INFO("task_water_controller:\tState 'EMPTY' achieved before phase duration. Switching to PHASE_FULL.");
+                        *currentPhase = PHASE_FULL;
+                        (*repetitionIndex)++;
+                        *phaseDuration = 0;
                     }
                 }
             }
         } else {
             // Nächster Zeitplan
+            LOG_INFO("task_water_controller:\tCompleted all repetitions for Schedule %d. Moving to next schedule.", *scheduleIndex);
             (*scheduleIndex)++;
             *repetitionIndex = 0;
             *currentPhase = PHASE_FULL;
@@ -409,30 +491,49 @@ void process_watering_schedule(
         *finished = true;
 
         // Pumpen sicherheitshalber ausschalten
+        LOG_INFO("task_water_controller:\tTurning off all pumps for safety.");
         ControlPump(false, PUMP_ZULAUF);
         ControlPump(false, PUMP_ABLAUF);
     }
 }
 
+
 void achieve_water_state_full(void)
 {
     LOG_INFO("task_water_controller:\tStarting process to achieve state 'FULL'");
 
+    // Überprüfen, ob der Zustand bereits erreicht ist
+    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+    bool sensorOben = gControllerState.sensorOben;
+    bool sensorUnten = gControllerState.sensorUnten;
+    osMutexRelease(gControllerStateMutexHandle);
+
+    LOG_DEBUG("task_water_controller:\tInitial sensor states - sensorOben: %d, sensorUnten: %d", sensorOben, sensorUnten);
+
+    if (sensorOben) {
+        LOG_INFO("task_water_controller:\tState 'FULL' already achieved. No action needed.");
+        return;
+    }
+
     // Deaktivieren der Pumpen vor Beginn
     ControlPump(false, PUMP_ZULAUF);
     ControlPump(false, PUMP_ABLAUF);
+    LOG_DEBUG("task_water_controller:\tDeactivated PUMP_ZULAUF and PUMP_ABLAUF before filling");
 
     // Starte die Pumpe, um das Becken zu füllen
     ControlPump(true, PUMP_ZULAUF);
+    LOG_DEBUG("task_water_controller:\tActivated PUMP_ZULAUF to start filling");
 
     // Warte, bis der obere Sensor aktiviert ist oder ein Timeout eintritt
     uint32_t startTime = osKernelGetTickCount();
-    uint32_t timeout = MAX_FILL_DURATION_MS; // Timeout-Dauer
+    uint32_t timeout = MAX_FILL_DURATION_MS; // Timeout-Dauer in Millisekunden
 
     while (1) {
         osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
-        bool sensorOben = gControllerState.sensorOben;
+        sensorOben = gControllerState.sensorOben;
         osMutexRelease(gControllerStateMutexHandle);
+
+        LOG_DEBUG("task_water_controller:\tChecking sensors - sensorOben: %d, sensorUnten: %d", sensorOben, sensorUnten);
 
         if (sensorOben) {
             LOG_INFO("task_water_controller:\tState 'FULL' achieved (sensorOben is true)");
@@ -452,16 +553,32 @@ void achieve_water_state_full(void)
     LOG_INFO("task_water_controller:\tPump turned off after achieving state 'FULL'");
 }
 
+
 void achieve_water_state_empty(void)
 {
     LOG_INFO("task_water_controller:\tStarting process to achieve state 'EMPTY'");
 
+    // Überprüfen, ob der Zustand bereits erreicht ist
+    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+    bool sensorOben = gControllerState.sensorOben;
+    bool sensorUnten = gControllerState.sensorUnten;
+    osMutexRelease(gControllerStateMutexHandle);
+
+    LOG_DEBUG("task_water_controller:\tInitial sensor states - sensorOben: %d, sensorUnten: %d", sensorOben, sensorUnten);
+
+    if (!sensorOben && !sensorUnten) {
+        LOG_INFO("task_water_controller:\tState 'EMPTY' already achieved. No action needed.");
+        return;
+    }
+
     // Deaktivieren der Pumpen vor Beginn
     ControlPump(false, PUMP_ZULAUF);
     ControlPump(false, PUMP_ABLAUF);
+    LOG_DEBUG("task_water_controller:\tDeactivated PUMP_ZULAUF and PUMP_ABLAUF before emptying");
 
     // Starte die Pumpe, um das Becken zu entleeren
     ControlPump(true, PUMP_ABLAUF);
+    LOG_DEBUG("task_water_controller:\tActivated PUMP_ABLAUF to start emptying");
 
     // Warte, bis beide Sensoren deaktiviert sind oder ein Timeout eintritt
     uint32_t startTime = osKernelGetTickCount();
@@ -469,9 +586,11 @@ void achieve_water_state_empty(void)
 
     while (1) {
         osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
-        bool sensorOben = gControllerState.sensorOben;
-        bool sensorUnten = gControllerState.sensorUnten;
+        sensorOben = gControllerState.sensorOben;
+        sensorUnten = gControllerState.sensorUnten;
         osMutexRelease(gControllerStateMutexHandle);
+
+        LOG_DEBUG("task_water_controller:\tChecking sensors - sensorOben: %d, sensorUnten: %d", sensorOben, sensorUnten);
 
         if (!sensorOben && !sensorUnten) {
             LOG_INFO("task_water_controller:\tState 'EMPTY' achieved (both sensors are false)");
@@ -490,6 +609,11 @@ void achieve_water_state_empty(void)
     ControlPump(false, PUMP_ABLAUF);
     LOG_INFO("task_water_controller:\tPump turned off after achieving state 'EMPTY'");
 }
+
+
+
+
+
 
 void UpdatePumpState(bool enable, uint8_t pumpId)
 {

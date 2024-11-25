@@ -63,6 +63,19 @@
 #define MAC_ADDRESS    {0x00, 0x08, 0xdc, 0xab, 0xcd, 0xef}
 #define LOCAL_PORT     50000
 
+
+
+
+// Maximale Anzahl der überwachten Tasks
+#define MAX_MONITORED_TASKS 10
+
+typedef struct {
+    const char *task_name;
+    uint32_t last_heartbeat;
+} TaskHeartbeat;
+
+
+
 // Globale Variablen
 extern ControllerState gControllerState;
 extern GrowCycleConfig gGrowCycleConfig;
@@ -75,6 +88,7 @@ extern char uidStr[25];
 
 extern struct tm gStartTimeTm;
 extern bool gTimeSynchronized;
+extern TaskHeartbeat task_heartbeats[MAX_MONITORED_TASKS];
 
 // Mutexe und Event-Gruppen
 extern osMutexId_t gControllerStateMutexHandle;

@@ -48,8 +48,9 @@ void StartHardwareTask(void *argument)
                     } else {
                         LOG_DEBUG("task_hardware.c: Deactivating pump with device ID %d", cmd.deviceId);
                         DisablePump(cmd.deviceId);
-                        break;
                     }
+
+                    send_status_update(MESSAGE_TYPE_STATUS_UPDATE, DEVICE_CONTROLLER, TARGET_WATER_LEVEL, cmd.enable);
                     break;
 
                 case COMMAND_CONTROL_LIGHT:

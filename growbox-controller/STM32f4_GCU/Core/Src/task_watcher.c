@@ -18,7 +18,8 @@ void StartWatcherTask(void *argument) {
 
 
             // CPU bisschen entlasten damit die anderen Tasks auch genug Leistung haben
-            vTaskDelay(10000 / portTICK_PERIOD_MS);
+            //vTaskDelay(10000 / portTICK_PERIOD_MS);
+        	osDelay(10000);
         }
     }
     /* USER CODE END StartWatcherTask */

@@ -1,5 +1,46 @@
 {
     "target_UUID": "003B001C3439471839303732",
+    "current_time": "2024-12-31T23:59:00",
+	"device":       "frontend",
+    "message_type": "newGrowCycle",
+    "payload": {
+        "target": "growCycle",
+        "action": "newGrowCycle",
+        "value": {
+            "startGrowTime": "2024-12-31T23:59:59",
+            "ledSchedules": [
+                {
+                    "durationOn": 5,
+                    "durationOff": 5,
+                    "repetition": 10
+                },
+                {
+                    "durationOn": 1,
+                    "durationOff": 10,
+                    "repetition": 20
+                }
+            ],
+            "wateringSchedules": [
+                {
+                    "duration_full": 10,
+                    "duration_empty": 10,
+                    "repetition": 25
+                },
+                {
+                    "duration_full": 60,
+                    "duration_empty": 60,
+                    "repetition": 50
+                }
+            ]
+        }
+    }
+}
+
+
+
+
+{
+    "target_UUID": "003B001C3439471839303732",
     "current_time": "2024-12-31T23:59:59",
 	"device":       "frontend",
     "message_type": "newGrowCycle",

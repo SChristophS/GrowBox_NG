@@ -10,7 +10,7 @@
 #include "globals.h"
 #include "helper_websocket.h"
 #include "message_types.h"
-
+#include "logger.h"
 #include "task_network.h"
 #include "message_types.h"
 
@@ -27,8 +27,8 @@ void StartSensorTask(void *argument)
         bool currentSensorOben = ReadSensorOben();
         bool currentSensorUnten = ReadSensorUnten();
 
-        printf("task_sensor.c: currentSensorOben: %i\r\n", currentSensorOben);
-        printf("task_sensor.c: currentSensorUnten: %i\r\n", currentSensorUnten);
+        //printf("task_sensor.c: currentSensorOben: %i\r\n", currentSensorOben);
+        //printf("task_sensor.c: currentSensorUnten: %i\r\n", currentSensorUnten);
 
         bool WaterSensorObenValueChanged = false;
         bool WaterSensorUntenValueChanged = false;
@@ -52,7 +52,10 @@ void StartSensorTask(void *argument)
         osMutexRelease(gControllerStateMutexHandle);
 
         if (WaterSensorValueChanged) {
-            printf("task_sensor.c: Water sensor values changed\r\n");
+            LOG_DEBUG("task_sensor.c: Water sensor values changed");
+            LOG_DEBUG("process_websocket_messages: currentSensorOben: %i, currentSensorUnten: %i", currentSensorOben, currentSensorUnten);
+            //printf("task_sensor.c: currentSensorOben: %i\r\n", currentSensorOben);
+            //printf("task_sensor.c: currentSensorUnten: %i\r\n", currentSensorUnten);
 
             if (WaterSensorObenValueChanged){
             	// Sende Statusnachricht für sensorOben
