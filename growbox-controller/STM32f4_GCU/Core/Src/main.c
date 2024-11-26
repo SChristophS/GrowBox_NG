@@ -176,17 +176,10 @@ const osMessageQueueAttr_t xLightControllerQueue_attributes = {
   .mq_mem = &xLightControllerQueueBuffer,
   .mq_size = sizeof(xLightControllerQueueBuffer)
 };
-
-
-
-
-/* Definitions for xWebSocketQueue */
-#define MESSAGE_POINTER_SIZE sizeof(MessageForWebSocket*)
-
-
 /* Definitions for xWebSocketQueue */
 osMessageQueueId_t xWebSocketQueueHandle;
-MessageForWebSocket* xWebSocketQueueBuffer[ 3 ]; // Array von Pointern
+//uint8_t xWebSocketQueueBuffer[ 3 * 6 ];
+MessageForWebSocket* xWebSocketQueueBuffer[ 3 ];
 osStaticMessageQDef_t xWebSocketQueueControlBlock;
 const osMessageQueueAttr_t xWebSocketQueue_attributes = {
   .name = "xWebSocketQueue",
@@ -195,12 +188,6 @@ const osMessageQueueAttr_t xWebSocketQueue_attributes = {
   .mq_mem = &xWebSocketQueueBuffer,
   .mq_size = sizeof(xWebSocketQueueBuffer)
 };
-
-
-
-
-
-
 /* Definitions for xHardwareQueue */
 osMessageQueueId_t xHardwareQueueHandle;
 uint8_t xHardwareQueueBuffer[ 2 * 8 ];
@@ -306,6 +293,14 @@ const osMutexAttr_t gHeartbeatMutex_attributes = {
   .cb_mem = &gHeartbeatMutexControlBlock,
   .cb_size = sizeof(gHeartbeatMutexControlBlock),
 };
+/* Definitions for gManualModeMutex */
+osMutexId_t gManualModeMutexHandle;
+osStaticMutexDef_t gManualModeMutexControlBlock;
+const osMutexAttr_t gManualModeMutex_attributes = {
+  .name = "gManualModeMutex",
+  .cb_mem = &gManualModeMutexControlBlock,
+  .cb_size = sizeof(gManualModeMutexControlBlock),
+};
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
 osStaticEventGroupDef_t gControllerEventGroupControlBlock;
@@ -334,6 +329,9 @@ struct tm gStartTimeTm;
 bool gTimeSynchronized;
 
 bool manualMode = false;
+
+/* Definitions for xWebSocketQueue */
+#define MESSAGE_POINTER_SIZE sizeof(MessageForWebSocket*)
 
 
 // Heartbeat-Daten (definiert global)
@@ -484,6 +482,9 @@ int main(void)
   /* creation of gHeartbeatMutex */
   gHeartbeatMutexHandle = osMutexNew(&gHeartbeatMutex_attributes);
 
+  /* creation of gManualModeMutex */
+  gManualModeMutexHandle = osMutexNew(&gManualModeMutex_attributes);
+
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
@@ -503,7 +504,7 @@ int main(void)
   /* creation of xLightControllerQueue */
   xLightControllerQueueHandle = osMessageQueueNew (1, sizeof(uint8_t), &xLightControllerQueue_attributes);
 
-  /* Creation of xWebSocketQueue */
+  /* creation of xWebSocketQueue */
   xWebSocketQueueHandle = osMessageQueueNew (3, sizeof(MessageForWebSocket*), &xWebSocketQueue_attributes);
 
   /* creation of xHardwareQueue */

@@ -53,7 +53,7 @@ void StartAliveTask(void *argument)
 
 
 	//vTaskDelay(HEARBEATCHECK_INTERVAL / portTICK_PERIOD_MS);
-
+    osDelay(100);
   }
   /* USER CODE END 5 */
 }

@@ -6,11 +6,13 @@
 #include <stdint.h>
 
 // Define message types
-#define MESSAGE_TYPE_STATUS_UPDATE 0
-#define MESSAGE_TYPE_REGISTER 1
-#define MESSAGE_TYPE_UPDATE 2
-#define MESSAGE_TYPE_STATUS_RESPONSE 3
-
+#define MESSAGE_TYPE_STATUS_UPDATE "StatusUpdate"
+#define MESSAGE_TYPE_REGISTER "Register"
+#define MESSAGE_TYPE_UPDATE "Update"
+#define MESSAGE_TYPE_STATUS_RESPONSE "StatusResponse"
+#define MESSAGE_TYPE_CONTROLLER_STATE "ControllerStateResponse"
+#define MESSAGE_TYPE_GROWCYCLE_CONFIG "GrowCycleConfigResponse"
+#define MESSAGE_TYPE_AUTOMATICMODE_STATE "AutomaticModeResponse"
 
 
 /*
@@ -26,7 +28,7 @@ typedef enum {
 */
 
 typedef struct {
-    uint8_t message_type;
+	const char *message_type;
     uint8_t device;
     uint8_t target;
     uint8_t action;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useReducer, useRef } from "react";
+import React, { useState, useEffect, useReducer, useRef, useCallback } from "react";
 import GrowPlanServices from '../utility/GrowPlanServices';
 import Device from "./Growbox_device";
 import DeviceModal from "./Growbox_DeviceModal";
@@ -6,81 +6,92 @@ import GrowPlanModal from "./Growbox_GrowPlanModal";
 import socketService from "../utility/socketService";
 import './Growbox.css';
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+const WEBSOCKET_HOST = process.env.REACT_APP_WEBSOCKET_HOST || '192.168.178.25';
+const WEBSOCKET_PORT = process.env.REACT_APP_WEBSOCKET_PORT || 8085;
+const DEFAULT_USERNAME = process.env.REACT_APP_USERNAME || 'christoph';
+
 const initialDeviceState = {
-    wasserbeckenZustand: false,
-    lightIntensity: 0,
-    readyForAutoRun: false,
-    pumpeZulauf: false,
-    pumpeAblauf: false,
-    sensorVoll: false,
-    sensorLeer: false,
+    wasserbeckenZustand: null,
+    lightIntensity: null,
+    readyForAutoRun: null,
+    pumpeOben: null,
+    pumpeUnten: null,
+    sensorOben: null,
+    sensorUnten: null,
+    automaticMode: null,
+    manualMode: null,
+    growCycleConfig: null,
+    controllerState: null,
 };
 
 const deviceReducer = (state, action) => {
     switch (action.type) {
         case 'SET_DEVICES':
-            console.log("[DEBUG] SET_DEVICES action received. Payload:", action.payload);
             return action.payload;
 
         case 'UPDATE_DEVICES_STATUS':
-            console.log("[DEBUG] UPDATE_DEVICES_STATUS action received. Payload:", action.payload);
             return state.map(device => {
                 if (action.payload.hasOwnProperty(device.device_id)) {
-                    console.log(`[DEBUG] Updating device ${device.device_id} status. Connected: true, Controller Alive: ${action.payload[device.device_id].length > 0}`);
                     return {
                         ...device,
                         isConnected: true,
                         controllerAlive: action.payload[device.device_id].length > 0
                     };
                 }
-                console.log(`[DEBUG] No status update for device ${device.device_id}`);
                 return device;
             });
 
         case 'UPDATE_DEVICE_STATE':
-            console.log("[DEBUG] UPDATE_DEVICE_STATE action received. UID:", action.payload.UID, "Target:", action.payload.target, "Value:", action.payload.value);
             return state.map(device => {
                 if (device.device_id === action.payload.UID) {
-                    console.log(`[DEBUG] Updating device ${device.device_id}. Current state:`, device.state);
-                    const updatedDevice = {
+                    return {
                         ...device,
                         state: {
                             ...device.state,
                             [action.payload.target]: action.payload.value
                         }
                     };
-                    console.log(`[DEBUG] Updated device ${device.device_id}. New state:`, updatedDevice.state);
-                    return updatedDevice;
                 }
                 return device;
             });
 
         default:
-            console.log("[DEBUG] Unknown action type:", action.type);
+            console.error("Unknown action type:", action.type);
             return state;
     }
 };
 
 function Growbox() {
+    // Gerätezustand
     const [devices, dispatch] = useReducer(deviceReducer, []);
     const devicesRef = useRef(devices);
-    const [showModal, setShowModal] = useState(false);
-    const [selectedDeviceId, setSelectedDeviceId] = useState("");
+
+    // Modale Zustände
+    const [showDeviceModal, setShowDeviceModal] = useState(false);
+    const [selectedDevice, setSelectedDevice] = useState(null);
+
     const [showGrowPlansModal, setShowGrowPlansModal] = useState(false);
+    const [growPlans, setGrowPlans] = useState([]);
     const [selectedGrowPlan, setSelectedGrowPlan] = useState(null);
+
+    // Andere Zustände
     const [startFromHere, setStartFromHere] = useState(0);
     const [loadingGrowPlans, setLoadingGrowPlans] = useState(false);
     const [error, setError] = useState("");
-    const [growPlans, setGrowPlans] = useState([]);
-    const [selectedDevice, setSelectedDevice] = useState(null);
 
+    // Referenz auf DeviceModal für Antwortverarbeitung
+    const deviceModalRef = useRef(null);
+
+    // Aktualisieren der devicesRef für den aktuellen Zustand
     useEffect(() => {
         devicesRef.current = devices;
     }, [devices]);
 
+    // WebSocket-Verbindung und Geräteabruf
     useEffect(() => {
         fetchDevices();
-        const socket = socketService.connect("192.168.178.25", 8085, handleWebSocketMessage);
+        const socket = socketService.connect(WEBSOCKET_HOST, WEBSOCKET_PORT, handleWebSocketMessage);
 
         return () => {
             socketService.disconnect();
@@ -88,8 +99,8 @@ function Growbox() {
     }, []);
 
     const handleWebSocketMessage = (event) => {
-        if (!event || !event.data) {
-            console.error("[ERROR] Received event or event.data is undefined");
+        if (!event?.data) {
+            console.error("Received event or event.data is undefined");
             return;
         }
 
@@ -97,70 +108,99 @@ function Growbox() {
         try {
             data = JSON.parse(event.data);
         } catch (error) {
-            console.error("[ERROR] Error parsing message data:", error);
+            console.error("Error parsing message data:", error);
             return;
         }
 
-        console.log("[DEBUG] Received data:", data);
-
-        if (data && typeof data === 'object' && data.message_type) {
-            const { message_type, UID, target, action, value, controllers } = data;
+		if (data && typeof data === 'object' && data.message_type) {
+			const { message_type, UID, chipID, target, value, controllers, payload, commandKey, changedValue } = data;
 
             switch (message_type) {
                 case "register_confirmed":
-                    console.log("[DEBUG] Registration confirmed", controllers);
-
                     dispatch({
                         type: 'UPDATE_DEVICES_STATUS',
                         payload: controllers,
                     });
+                    // Nach erfolgreicher Registrierung Anfragen an den Controller senden
+                    devicesRef.current.forEach(device => {
+                        sendControllerRequests(device.device_id);
+                    });
                     break;
+				
+				case "status_update":
+					const deviceIdStatus = UID || chipID;
+					if (deviceIdStatus && devicesRef.current.length > 0) {
+						const device = devicesRef.current.find(device => device.device_id === deviceIdStatus);
+
+						if (!device) {
+							console.error(`Device with UID ${deviceIdStatus} not found.`);
+							return;
+						}
+
+						dispatch({
+							type: 'UPDATE_DEVICE_STATE',
+							payload: {
+								UID: deviceIdStatus,
+								target: changedValue,
+								value: value
+							}
+						});
+					} else {
+						console.error("UID or chipID is missing in status_update message or devices list is empty.");
+					}
+					break;
 
                 case "controller_update":
                     if (UID && devicesRef.current.length > 0) {
-                        console.log("[DEBUG] Processing controller update for UID:", UID);
-
                         const device = devicesRef.current.find(device => device.device_id === UID);
 
                         if (!device) {
-                            console.error(`[ERROR] Device with UID ${UID} not found.`);
-                            console.log("[DEBUG] Full devices list:", devicesRef.current);
+                            console.error(`Device with UID ${UID} not found.`);
                             return;
                         }
 
                         dispatch({
                             type: 'UPDATE_DEVICE_STATE',
                             payload: {
-                                UID: UID,
-                                target: target,
-                                value: value
+                                UID,
+                                target,
+                                value
                             }
                         });
-                        console.log(`[DEBUG] Updated device ${UID} with new state.`);
                     } else {
-                        console.error("[ERROR] UID is missing in controller_update message or devices list is empty.");
+                        console.error("UID is missing in controller_update message or devices list is empty.");
                     }
                     break;
 
-                default:
-                    console.error("[ERROR] Invalid message format or unsupported message type:", data);
+                case "ControllerStateResponse":
+                case "AutomaticModeResponse":
+                case "GrowCycleConfigResponse":
+                    // Verarbeiten der Antworten vom Controller
+                    handleControllerResponse(data);
                     break;
+
+                case "ControlCommandResponse":
+                    // Benachrichtigen, dass eine Antwort eingegangen ist
+                    if (deviceModalRef.current) {
+                        deviceModalRef.current.handleResponse(commandKey);
+                    }
+                    break;
+
+				default:
+					console.error("Invalid message format or unsupported message type:", data);
+					break;
             }
         } else {
-            console.error("[ERROR] Invalid message format:", data);
+            console.error("Invalid message format:", data);
         }
     };
 
     const fetchDevices = async () => {
-        console.log("fetchDevices: Starting fetchDevices");
-
-        const username = "christoph";
+        const username = DEFAULT_USERNAME;
         try {
-            const response = await fetch(`http://localhost:5000/devices?username=${username}`);
+            const response = await fetch(`${API_BASE_URL}/devices?username=${username}`);
             if (response.ok) {
                 const data = await response.json();
-                console.log("fetchDevices: data.devices :", data.devices);
-
                 const newDevices = data.devices.map(device => ({
                     ...device,
                     isConnected: false,
@@ -173,39 +213,110 @@ function Growbox() {
                     payload: newDevices
                 });
 
-                console.log("[DEBUG] Devices dispatched to state:", newDevices);
-
                 const chipIds = newDevices.map(device => device.device_id);
-                const registerMessage = JSON.stringify({
+                const registerMessage = {
                     message_type: "register",
                     device: "Frontend",
                     chipIds: chipIds
-                });
-                console.log("fetchDevices: sende register message:", registerMessage);
-                socketService.sendMessage(registerMessage);
+                };
+                socketService.sendMessage(JSON.stringify(registerMessage));
             } else {
-                console.error("fetchDevices: HTTP-Error: " + response.status);
+                console.error("HTTP Error:", response.status);
             }
         } catch (error) {
-            console.error("fetchDevices: Fehler beim Abrufen der Geräte", error);
+            console.error("Error fetching devices:", error);
         }
     };
 
-    const sendCommandToGrowbox = async (deviceID, action) => {
-        console.log("sendCommandToGrowbox: function call");
-        console.log("action: " + action);
+    const sendControllerRequests = (deviceID) => {
+        const requests = [
+            { message_type: "ControllerStateRequest" },
+            { message_type: "AutomaticModeRequest" },
+            { message_type: "GrowCycleConfigRequest" }
+        ];
 
+        requests.forEach(request => {
+            const message = {
+                target_UUID: deviceID,
+                device: "frontend",
+                ...request
+            };
+            sendWebSocketMessage(message);
+        });
+    };
+
+const handleControllerResponse = (data) => {
+    const { message_type, UID, payload } = data;
+
+    if (!UID || !payload) {
+        console.error("Invalid controller response:", data);
+        return;
+    }
+
+    switch (message_type) {
+        case "ControllerStateResponse":
+            const controllerState = payload.ControllerState;
+            for (const [key, value] of Object.entries(controllerState)) {
+                dispatch({
+                    type: 'UPDATE_DEVICE_STATE',
+                    payload: {
+                        UID,
+                        target: key,
+                        value: value
+                    }
+                });
+            }
+            break;
+
+        case "AutomaticModeResponse":
+            dispatch({
+                type: 'UPDATE_DEVICE_STATE',
+                payload: {
+                    UID,
+                    target: 'automaticMode',
+                    value: payload.automaticMode
+                }
+            });
+            break;
+
+        case "ManualModeResponse":
+            dispatch({
+                type: 'UPDATE_DEVICE_STATE',
+                payload: {
+                    UID,
+                    target: 'manualMode',
+                    value: payload.manualMode
+                }
+            });
+            break;
+
+        case "GrowCycleConfigResponse":
+            dispatch({
+                type: 'UPDATE_DEVICE_STATE',
+                payload: {
+                    UID,
+                    target: 'growCycleConfig',
+                    value: payload.growCycleConfig
+                }
+            });
+            break;
+
+        default:
+            console.error("Unhandled controller response type:", message_type);
+            break;
+    }
+};
+
+    const sendCommandToGrowbox = (deviceID, action) => {
         if (socketService.isConnected() && socketService.socket.readyState === WebSocket.OPEN) {
-            const message = JSON.stringify({
+            const message = {
                 device: "Frontend",
                 chipId: deviceID,
                 action: action
-            });
-
-            socketService.sendMessage(message);
-            console.log("sendCommandToGrowbox: Nachricht gesendet:", message);
+            };
+            socketService.sendMessage(JSON.stringify(message));
         } else {
-            console.error("WebSocket-Verbindung ist nicht offen.");
+            console.error("WebSocket connection is not open.");
         }
     };
 
@@ -213,13 +324,13 @@ function Growbox() {
         if (socketService.isConnected() && socketService.socket.readyState === WebSocket.OPEN) {
             socketService.sendMessage(JSON.stringify(message));
         } else {
-            console.error("WebSocket-Verbindung ist nicht offen.");
-            socketService.connect("192.168.178.25", 8085, handleWebSocketMessage);
+            console.error("WebSocket connection is not open.");
+            socketService.connect(WEBSOCKET_HOST, WEBSOCKET_PORT, handleWebSocketMessage);
             setTimeout(() => {
                 if (socketService.isConnected() && socketService.socket.readyState === WebSocket.OPEN) {
                     socketService.sendMessage(JSON.stringify(message));
                 } else {
-                    console.error("WebSocket-Verbindung konnte nicht hergestellt werden.");
+                    console.error("WebSocket connection could not be established.");
                 }
             }, 1000);
         }
@@ -228,15 +339,14 @@ function Growbox() {
     const fetchGrowPlans = async () => {
         setLoadingGrowPlans(true);
         setError("");
-        const username = "christoph";
+        const username = DEFAULT_USERNAME;
 
         try {
             const response = await GrowPlanServices.getGrowPlans(username);
             setGrowPlans(response.data);
-            console.log("fetchGrowPlans: response.data: ", response.data);
         } catch (error) {
-            setError("Fehler beim Abrufen der Growpläne");
-            console.error("Fehler:", error);
+            setError("Error fetching grow plans");
+            console.error("Error:", error);
         } finally {
             setLoadingGrowPlans(false);
             setShowGrowPlansModal(true);
@@ -244,20 +354,24 @@ function Growbox() {
     };
 
     const sendGrowPlanToGrowbox = async (selectedGrowPlan) => {
-        console.log("sendGrowPlanToGrowbox: function call");
-        console.log(selectedGrowPlan);
         if (!selectedGrowPlan || !selectedGrowPlan.droppedItems) {
             console.error('Selected grow plan is not set correctly.');
             return;
         }
 
-        let promises = selectedGrowPlan.droppedItems.map(item =>
-            GrowPlanServices.getCyclePlanFromID(item.id.split('-')[0])
-                .then(response => JSON.parse(response.data))
-                .catch(error => console.error("Fehler beim Laden des GrowCycles", error))
-        );
+        try {
+            const promises = selectedGrowPlan.droppedItems.map(item => {
+                const cycleId = item.id.split('-')[0];
+                return GrowPlanServices.getCyclePlanFromID(cycleId)
+                    .then(response => JSON.parse(response.data))
+                    .catch(error => {
+                        console.error("Error loading grow cycle:", error);
+                        return null;
+                    });
+            });
 
-        Promise.all(promises).then(results => {
+            const results = await Promise.all(promises);
+
             const growData = {
                 totalGrowTime: 0,
                 startFromHere: parseInt(startFromHere, 10),
@@ -276,7 +390,7 @@ function Growbox() {
 
             const finalData = {
                 _id: selectedGrowPlan._id,
-                username: "christoph",
+                username: DEFAULT_USERNAME,
                 growCycleName: selectedGrowPlan.growPlanName,
                 description: selectedGrowPlan.description,
                 sharingStatus: selectedGrowPlan.sharingStatus,
@@ -284,56 +398,71 @@ function Growbox() {
             };
 
             if (socketService.isConnected() && socketService.socket.readyState === WebSocket.OPEN) {
-                const message = JSON.stringify({
-                    device: "Frontend",
-                    chipId: selectedDeviceId,
-                    action: "send_growplan",
-                    message: finalData
-                });
-
-                socketService.sendMessage(message);
-                console.log("Growplan-Daten gesendet:", message);
+                const message = {
+                    target_UUID: selectedDevice?.device_id,
+                    device: "frontend",
+                    message_type: "ControlCommand",
+                    payload: {
+                        commands: [
+                            {
+                                target: "growCycle",
+                                action: "setConfig",
+                                value: finalData
+                            }
+                        ]
+                    }
+                };
+                sendWebSocketMessage(message);
+                // Nach dem Senden den Zustand aktualisieren
+                sendControllerRequests(selectedDevice.device_id);
             } else {
-                console.error("WebSocket-Verbindung ist nicht offen.");
+                console.error("WebSocket connection is not open.");
             }
-        })
-            .catch(error => console.error("Fehler bei der Verarbeitung der GrowCycle-Daten", error));
+        } catch (error) {
+            console.error("Error processing grow plan data:", error);
+        }
     };
 
-    const handleDeviceClick = (deviceId) => {
-        const selectedDevice = devices.find(device => device.device_id === deviceId);
+    const handleDeviceClick = useCallback((deviceId) => {
+        const device = devices.find(device => device.device_id === deviceId);
 
-        if (!selectedDevice) {
-            console.error(`[ERROR] Device with ID ${deviceId} not found.`);
+        if (!device) {
+            console.error(`Device with ID ${deviceId} not found.`);
             return;
         }
 
-        setSelectedDevice(selectedDevice);
-        setShowModal(true);
-    };
+        setSelectedDevice(device);
+        setShowDeviceModal(true);
+    }, [devices]);
 
     return (
         <div>
             <h1>Growboxen</h1>
 
             <div className="devices-container">
-                {devices.map((device, index) => (
+                {devices.map(device => (
                     <Device
-                        key={index}
+                        key={device.device_id}
                         device={device}
-                        onClick={() => handleDeviceClick(device.device_id)} // Handle the click and pass the device_id
-                        onRunClick={() => sendCommandToGrowbox(device.device_id, "startGrow")} // Specify action for the run button
-                        onStopClick={() => sendCommandToGrowbox(device.device_id, "stopGrow")} // Specify action for the stop button
+                        onClick={() => handleDeviceClick(device.device_id)}
+                        onRunClick={() => sendCommandToGrowbox(device.device_id, "startGrow")}
+                        onStopClick={() => sendCommandToGrowbox(device.device_id, "stopGrow")}
                     />
                 ))}
             </div>
 
-            {selectedDevice && ( // Conditionally render the DeviceModal if a device is selected
+            {selectedDevice && (
                 <DeviceModal
-                    show={showModal}
-                    onHide={() => setShowModal(false)}
+                    ref={deviceModalRef}
+                    show={showDeviceModal}
+                    onHide={() => setShowDeviceModal(false)}
                     device={selectedDevice}
                     onSendSettings={(update) => sendWebSocketMessage(update)}
+                    onSendSpecificCommand={(message) => {
+                        sendWebSocketMessage(message);
+                        // Nach dem Senden den Zustand aktualisieren
+                        sendControllerRequests(selectedDevice.device_id);
+                    }}
                 />
             )}
 

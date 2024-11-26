@@ -10,6 +10,9 @@
 #include "logger.h"
 #include "globals.h"
 
+
+#include "core_cm4.h"
+
 #include "state_manager.h"
 #include "ds3231.h"
 #include "eeprom.h"
@@ -28,7 +31,7 @@
 
 #include "message_types.h"
 
-#define EEPROM_SIZE 32768 // Größe des AT24C256 in Bytes
+
 #define WEBSOCKET_GUID "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
@@ -45,7 +48,7 @@ void StartNetworkTask(void *argument);
 void network_init(void);
 
 /* Überprüft den Socket-Status und führt entsprechende Aktionen aus */
-void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected);
+void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port);
 
 /* Führt den WebSocket-Handschlag durch */
 bool websocket_handshake(uint8_t sock);
@@ -119,6 +122,13 @@ uint32_t calculate_total_duration(GrowCycleConfig *config);
 /* Sendet registrier message */
 void send_register_message();
 
+void handle_timesync_message(cJSON *root);
+
+void handle_automatic_mode_request(cJSON *root);
+
+
+
+
 
 /* Zielserver-Einstellungen */
 uint8_t destip[4] = {192, 168, 178, 25}; // IP-Adresse des Zielservers
@@ -168,8 +178,12 @@ void StartNetworkTask(void *argument)
     for (;;) {
     	UpdateTaskHeartbeat("task_network");
 
+
         uint8_t socket_status = getSn_SR(sock);
-        check_socket_status(&socket_status, sock, &any_port, &websocket_connected);
+        LOG_DEBUG("task_network.c: Socket status after recv: %d", socket_status);
+
+        check_socket_status(&socket_status, sock, &any_port);
+
 
         int32_t ret;
         uint16_t size = 0;
@@ -178,12 +192,20 @@ void StartNetworkTask(void *argument)
             memset(DATABUF, 0, MAX_BUFFER_SIZE);
             ret = recv(sock, DATABUF, size);
             if (ret <= 0) {
-                LOG_ERROR("task_network.c: Error receiving data. Socket closed.");
+                int err = getSn_IR(sock);
+                LOG_ERROR("task_network.c: Error receiving data. Socket closed. Error code: %d", err);
                 close(sock);
                 websocket_connected = 0;
             } else {
             	LOG_INFO("task_network.c: process_received_websocket_data");
                 process_received_websocket_data(sock, DATABUF, ret);
+
+                uint8_t socket_status_after = getSn_SR(sock);
+                LOG_DEBUG("task_network.c: Socket status after processing data: %d", socket_status_after);
+                if (socket_status_after == SOCK_CLOSED) {
+                    LOG_ERROR("task_network.c: Socket closed after processing data");
+                    websocket_connected = 0;
+                }
             }
         }
 
@@ -193,7 +215,7 @@ void StartNetworkTask(void *argument)
             process_websocket_messages(sock);
         }
 
-        osDelay(100);
+        osDelay(50);
     }
 }
 
@@ -234,18 +256,17 @@ void send_pong_frame(uint8_t sock, uint8_t *payload, uint64_t payload_length)
     LOG_INFO("send_pong_frame: Sent Pong frame with payload length: %" PRIu64, payload_length);
 }
 
-
-void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected)
+void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port)
 {
     switch (*socket_status) {
-		case SOCK_CLOSED:
-			LOG_INFO("task_network.c: Socket %d closed, reopening...", sock);
-			if ((socket(sock, Sn_MR_TCP, (*any_port)++, 0x00)) != sock) {
-				if (*any_port == 0xffff) *any_port = 50000;
-			}
-			LOG_INFO("task_network.c: Socket %d opened", sock);
-			*websocket_connected = 0;
-			break;
+        case SOCK_CLOSED:
+            LOG_INFO("task_network.c: Socket %d closed, reopening...", sock);
+            if ((socket(sock, Sn_MR_TCP, (*any_port)++, 0x00)) != sock) {
+                if (*any_port == 0xffff) *any_port = 50000;
+            }
+            LOG_INFO("task_network.c: Socket %d opened", sock);
+            websocket_connected = 0;
+            break;
 
         case SOCK_INIT:
             LOG_INFO("task_network.c: Socket %d is initialized.", sock);
@@ -263,11 +284,11 @@ void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_por
                 setSn_IR(sock, Sn_IR_CON);
             }
 
-            if (!*websocket_connected) {
+            if (!websocket_connected) {
                 /* WebSocket-Handshake durchführen */
                 if (websocket_handshake(sock)) {
                     LOG_INFO("task_network.c: WebSocket handshake successful");
-                    *websocket_connected = 1;
+                    websocket_connected = 1;
 
                     // Registrierungsnachricht senden
                     LOG_INFO("task_network.c: sending Register Message");
@@ -275,7 +296,7 @@ void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_por
                 } else {
                     LOG_ERROR("task_network.c: WebSocket handshake failed");
                     close(sock);
-                    *websocket_connected = 0;
+                    websocket_connected = 0;
                 }
             }
             break;
@@ -283,7 +304,7 @@ void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_por
         case SOCK_CLOSE_WAIT:
             LOG_INFO("task_network.c: Socket %d close wait", sock);
             disconnect(sock);
-            *websocket_connected = 0;
+            websocket_connected = 0;
             break;
 
         default:
@@ -430,10 +451,6 @@ bool websocket_handshake(uint8_t sock)
     return false;
 }
 
-
-
-
-
 void process_websocket_messages(uint8_t sock) {
 
     MessageForWebSocket* msg;
@@ -448,13 +465,13 @@ void process_websocket_messages(uint8_t sock) {
     }
 }
 
-
 void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
 {
     LOG_INFO("send_websocket_message: Preparing to send WebSocket message");
 
     char json_message[512]; // Passen Sie die Größe entsprechend an
-    size_t message_len = 0;
+    size_t message_len = 0; // Initialisiere message_len zu 0
+
 
     // Wenn `json_payload` gültige Daten enthält, diese verwenden
     if (message->json_payload[0] != '\0') {
@@ -464,12 +481,12 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
         message_len = strlen(json_message);
     } else {
         // Bauen Sie die JSON-Nachricht basierend auf message_type, device, etc.
-        const char *message_type_str = message_type_to_string(message->message_type);
+    	const char *message_type_str = message->message_type;
         const char *device_str = device_to_string(message->device);
         const char *changed_value_str = target_to_string(message->target);
 
-        LOG_DEBUG("send_websocket_message: Message details - message_type: %d (%s), device: %d (%s), value: %u",
-                  message->message_type, message_type_str, message->device, device_str, message->value);
+        LOG_DEBUG("send_websocket_message: Message details - message_type: %s, device: %d (%s), value: %u",
+                  message_type_str, message->device, device_str, message->value);
 
         snprintf(json_message, sizeof(json_message),
                  "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"changedValue\":\"%s\",\"value\":%u}",
@@ -484,6 +501,8 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
 
     LOG_DEBUG("send_websocket_message: json_message = %s", json_message);
     LOG_DEBUG("send_websocket_message: JSON message length is %lu", (unsigned long)message_len);
+
+
 
     // Vorbereitung des WebSocket-Frames
     size_t frame_size;
@@ -501,6 +520,7 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
         LOG_ERROR("send_websocket_message: Message too long to be sent in a single WebSocket frame");
         return;
     }
+
 
     // Masking Key generieren
     uint8_t masking_key[4];
@@ -535,9 +555,6 @@ void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
     LOG_INFO("send_websocket_message: Sent JSON message:\r\n  JSON: %s", json_message);
 }
 
-
-
-
 void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
 {
     LOG_INFO("task_network.c: Received data of size %ld bytes", (long int)size);
@@ -550,13 +567,23 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
     uint8_t header_length = 2;
     uint8_t masking_key[4] = {0};
 
+
+
     // Handle extended payload lengths (126 and 127)
     if (payload_length == 126) {
         payload_length = (buf[2] << 8) | buf[3];
         header_length += 2;
     } else if (payload_length == 127) {
-        // Code to handle 64-bit payload length
-        // (You can add this if necessary)
+        payload_length = 0;
+        for (int i = 0; i < 8; i++) {
+            payload_length = (payload_length << 8) | buf[header_length + i];
+        }
+        header_length += 8;
+    }
+
+    if (header_length + payload_length > size) {
+        LOG_ERROR("task_network.c: Payload length exceeds buffer size");
+        return;
     }
 
     if (mask) {
@@ -566,6 +593,8 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
 
     LOG_INFO("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %" PRIu64,
              opcode, fin, mask, payload_length);
+    LOG_INFO("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %llu",
+             opcode, fin, mask, (unsigned long long)payload_length);
 
     // Unmasking the payload if masked
     if (mask) {
@@ -607,7 +636,6 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
     }
 }
 
-
 void process_received_data(const char *json_payload)
 {
     LOG_INFO("task_network.c: Processing received JSON data");
@@ -642,23 +670,30 @@ void process_received_data(const char *json_payload)
         return;
     }
 
-    // Aktuelle Zeit synchronisieren, falls vorhanden
-    cJSON *current_time = cJSON_GetObjectItem(root, "current_time");
-    if (current_time != NULL && cJSON_IsString(current_time)) {
-        LOG_INFO("task_network.c: Synchronizing RTC with current_time: %s", current_time->valuestring);
-        synchronize_rtc(current_time->valuestring);
-    }
 
     if (strcmp(message_type->valuestring, "newGrowCycle") == 0) {
         parse_new_grow_cycle(root);
     } else if (strcmp(message_type->valuestring, "ControlCommand") == 0) {
+    	LOG_INFO("task_network.c: Handling ControlCommand message");
         parse_control_command(root);
-    } else if (strcmp(message_type->valuestring, "TimeSync") == 0)  {
-		handle_timesync_message(root);
+    } else if (strcmp(message_type->valuestring, "ControllerStateRequest") == 0) {
+		LOG_INFO("task_network.c: Handling ControllerStateRequest message");
+		send_controller_state();
+    } else if (strcmp(message_type->valuestring, "GrowCycleConfigRequest") == 0) {
+        LOG_INFO("task_network.c: Handling GrowCycleConfigRequest message");
+        send_grow_cycle_config();
     } else if (strcmp(message_type->valuestring, "StatusRequest") == 0) {
+    	LOG_INFO("task_network.c: Handling StatusRequest message");
         handle_status_request(root);
     } else if (strcmp(message_type->valuestring, "EraseEEPROM") == 0) {
-        handle_erase_eeprom_message();
+    	LOG_INFO("task_network.c: Handling EraseEEPROM message");
+    	handle_erase_eeprom_message();
+    } else if (strcmp(message_type->valuestring, "TimeSync") == 0) {
+    	LOG_INFO("task_network.c: Handling TimeSync message");
+    	handle_timesync_message(root);
+    } else if (strcmp(message_type->valuestring, "AutomaticModeRequest") == 0) {
+    	LOG_INFO("task_network.c: Handling AutomaticModeRequest message");
+        handle_automatic_mode_request(root);
     } else {
         LOG_WARN("task_network.c: Unknown message_type: %s", message_type->valuestring);
     }
@@ -666,20 +701,73 @@ void process_received_data(const char *json_payload)
     cJSON_Delete(root);
 }
 
+void handle_automatic_mode_request(cJSON *root) {
+    LOG_INFO("task_network.c: Handling AutomaticModeRequest message");
+
+    // Überprüfe, ob root gültig ist
+    if (root == NULL) {
+        LOG_ERROR("handle_automatic_mode_request: root is NULL");
+        return;
+    }
+
+       // Erstelle die Antwortnachricht
+    cJSON *response = cJSON_CreateObject();
+    if (response == NULL) {
+        LOG_ERROR("handle_automatic_mode_request: Failed to create JSON object");
+        return;
+    }
+
+    // Füge erforderliche Felder hinzu
+    cJSON_AddStringToObject(response, "UID", uidStr);
+    cJSON_AddStringToObject(response, "message_type", "AutomaticModeResponse");
+    cJSON_AddStringToObject(response, "device", "controller");
+
+    // Erstelle das payload-Objekt
+    cJSON *payload = cJSON_CreateObject();
+    if (payload == NULL) {
+        LOG_ERROR("handle_automatic_mode_request: Failed to create payload object");
+        cJSON_Delete(response);
+        return;
+    }
+    cJSON_AddItemToObject(response, "payload", payload);
+
+    // Hole den aktuellen Wert von automaticMode
+    osMutexAcquire(gAutomaticModeHandle, osWaitForever);
+    bool isAutomaticMode = automaticMode;
+    osMutexRelease(gAutomaticModeHandle);
+
+    // Füge automaticMode zum payload hinzu
+    cJSON_AddBoolToObject(payload, "automaticMode", isAutomaticMode);
+
+    // Konvertiere das JSON-Objekt in einen String
+    char *json_string = cJSON_PrintUnformatted(response);
+    if (json_string == NULL) {
+        LOG_ERROR("handle_automatic_mode_request: Failed to print JSON string");
+        cJSON_Delete(response);
+        return;
+    }
+
+    // Sende die Antwort über WebSocket
+    send_json_over_websocket(json_string);
+
+    // Aufräumen
+    cJSON_free(json_string);
+    cJSON_Delete(response);
+
+    LOG_INFO("handle_automatic_mode_request: Sent AutomaticModeResponse message");
+}
 
 void handle_erase_eeprom_message(void) {
     LOG_INFO("task_network.c: Handling EraseEEPROM message");
 
-    uint8_t emptyData[EEPROM_SIZE];
-    memset(emptyData, 0xFF, sizeof(emptyData)); // Annahme: 0xFF ist der leere Zustand
-
-    if (EEPROM_Write(0x0000, emptyData, EEPROM_SIZE)) {
+    if (EEPROM_Erase()) {
         LOG_INFO("task_network.c: EEPROM erased successfully");
+        LOG_INFO("task_network.c: Restarting Controller");
+        NVIC_SystemReset();
     } else {
         LOG_ERROR("task_network.c: Failed to erase EEPROM");
     }
 }
-
 
 void handle_status_request(cJSON *root) {
     LOG_INFO("task_network.c: Handling StatusRequest message");
@@ -706,8 +794,6 @@ void handle_status_request(cJSON *root) {
     }
 }
 
-
-
 void handle_timesync_message(cJSON *root) {
     LOG_INFO("task_network.c: Handling TimeSync message");
 
@@ -726,11 +812,9 @@ void handle_timesync_message(cJSON *root) {
     }
 }
 
-
-
 void send_grow_cycle_config(void) {
     cJSON *response = cJSON_CreateObject();
-    cJSON_AddStringToObject(response, "message_type", "StatusResponse");
+    cJSON_AddStringToObject(response, "message_type", MESSAGE_TYPE_GROWCYCLE_CONFIG);
     cJSON_AddStringToObject(response, "UID", uidStr);
 
     cJSON *payload = cJSON_CreateObject();
@@ -750,10 +834,9 @@ void send_grow_cycle_config(void) {
     cJSON_Delete(response);
 }
 
-
 void send_controller_state(void) {
     cJSON *response = cJSON_CreateObject();
-    cJSON_AddStringToObject(response, "message_type", "StatusResponse");
+    cJSON_AddStringToObject(response, "message_type", MESSAGE_TYPE_CONTROLLER_STATE);
     cJSON_AddStringToObject(response, "UID", uidStr);
 
     cJSON *payload = cJSON_CreateObject();
@@ -772,8 +855,6 @@ void send_controller_state(void) {
     cJSON_free(json_string);
     cJSON_Delete(response);
 }
-
-
 
 void parse_control_command(cJSON *root)
 {
@@ -822,9 +903,6 @@ void parse_control_command(cJSON *root)
         }
     }
 }
-
-
-
 
 void parse_new_grow_cycle(cJSON *root)
 {
@@ -1074,10 +1152,73 @@ void handle_system_command(const char *action, cJSON *value)
         if (!save_automatic_mode(automaticMode)) {
             LOG_ERROR("task_network.c: Failed to save automatic mode");
         }
+    } else if (strcmp(action, "setManualMode") == 0 && cJSON_IsBool(value)) {
+        bool newManualMode = cJSON_IsTrue(value);
+        LOG_INFO("task_network.c: Setting manual mode to %s", newManualMode ? "ON" : "OFF");
+
+        // Aktualisiere den globalen Wert
+        osMutexAcquire(gManualModeMutexHandle, osWaitForever);
+        manualMode = newManualMode;
+        osMutexRelease(gManualModeMutexHandle);
+
+        // Speichere nur den automaticMode im EEPROM
+        if (!save_manual_mode(manualMode)) {
+            LOG_ERROR("task_network.c: Failed to save manual mode");
+        }
     } else {
         LOG_WARN("task_network.c: Unknown action for system: %s", action);
     }
 }
+
+bool save_manual_mode(bool manualMode) {
+osMutexAcquire(gEepromMutexHandle, osWaitForever);
+uint16_t address = EEPROM_MANUAL_MODE_ADDR;
+printf("task_state_manager.c: Saving manualMode to EEPROM at address 0x%04X\r\n", address);
+
+if (!EEPROM_Write(address, (uint8_t *)&manualMode, sizeof(bool))) {
+	printf("task_state_manager.c: Failed to write manualMode to EEPROM\r\n");
+	osMutexRelease(gEepromMutexHandle);
+	return false;
+}
+
+// **Neu hinzugefügt: Lesen des gespeicherten Werts zur Validierung**
+bool readBackManualMode;
+if (!EEPROM_Read(address, (uint8_t *)&readBackManualMode, sizeof(bool))) {
+	printf("task_state_manager.c: Failed to read back manualMode from EEPROM\r\n");
+	osMutexRelease(gEepromMutexHandle);
+	return false;
+}
+
+if (readBackManualMode != manualMode) {
+	printf("task_state_manager.c: Read back manualMode does not match saved value\r\n");
+	osMutexRelease(gEepromMutexHandle);
+	return false;
+} else {
+	printf("task_state_manager.c: Verified that manualMode was saved correctly\r\n");
+}
+
+osMutexRelease(gEepromMutexHandle);
+
+printf("task_state_manager.c: manualMode saved and verified successfully\r\n");
+return true;
+}
+
+bool load_manual_mode(bool *manualMode) {
+    uint16_t address = EEPROM_MANUAL_MODE_ADDR;
+    LOG_INFO("state_manager.c: Loading manualMode from EEPROM at address 0x%04X\r\n", address);
+
+    osMutexAcquire(gEepromMutexHandle, osWaitForever);
+    if (!EEPROM_Read(address, (uint8_t *)manualMode, sizeof(bool))) {
+        printf("task_state_manager.c: Failed to read manualMode from EEPROM\r\n");
+        osMutexRelease(gEepromMutexHandle);
+        return false;
+    }
+    osMutexRelease(gEepromMutexHandle);
+
+    LOG_INFO("state_manager.c: manualMode loaded successfully\r\n");
+    return true;
+}
+
 
 uint32_t calculate_total_duration(GrowCycleConfig *config) {
     uint32_t totalDuration = 0;
@@ -1092,10 +1233,13 @@ uint32_t calculate_total_duration(GrowCycleConfig *config) {
     return totalDuration; // Dauer in Sekunden
 }
 
-
 cJSON *grow_cycle_config_to_json(GrowCycleConfig *config) {
     cJSON *config_json = cJSON_CreateObject();
-    if (!config_json) return NULL;
+
+    if (config_json == NULL) {
+        LOG_ERROR("grow_cycle_config_to_json: Failed to create JSON object");
+        return NULL;
+    }
 
     cJSON_AddStringToObject(config_json, "startGrowTime", config->startGrowTime);
 
@@ -1121,7 +1265,6 @@ cJSON *grow_cycle_config_to_json(GrowCycleConfig *config) {
 
     return config_json;
 }
-
 
 cJSON *controller_state_to_json(ControllerState *state) {
     cJSON *state_json = cJSON_CreateObject();
@@ -1159,7 +1302,6 @@ void send_json_over_websocket(const char *json_string) {
         LOG_INFO("task_network.c: JSON message added to WebSocketQueue");
     }
 }
-
 
 void send_register_message() {
     MessageForWebSocket* msg = allocateMessage();

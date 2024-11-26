@@ -83,7 +83,7 @@ extern GrowCycleConfig gGrowCycleConfig;
 /* TODO the name should be gAutomaticMode */
 extern bool automaticMode;
 extern bool gConfigAvailable;
-
+extern bool manualMode;
 extern char uidStr[25];
 
 extern struct tm gStartTimeTm;
@@ -100,6 +100,7 @@ extern osMutexId_t gConfigAvailableMutexHandle;
 extern osMutexId_t gStartTimeMutexHandle;
 extern osMutexId_t gMessagePoolMutexHandle;
 extern osMutexId_t gHeartbeatMutexHandle;
+extern osMutexId_t gManualModeMutexHandle;
 
 extern osEventFlagsId_t gControllerEventGroupHandle;
 extern osEventFlagsId_t INITIALIZATION_COMPLETEHandle;

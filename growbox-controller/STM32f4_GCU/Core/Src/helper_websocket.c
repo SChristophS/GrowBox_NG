@@ -1,3 +1,4 @@
+/* helper_websocket.c */
 #include "cmsis_os.h"
 #include <stdio.h>
 #include "task_network.h"
@@ -52,8 +53,9 @@ void freeMessage(MessageForWebSocket* msg) {
 
 
 
+;
 
-void send_status_update(uint8_t message_type, uint8_t device, uint8_t target, uint8_t value) {
+void send_status_update(const char *message_type, uint8_t device, uint8_t target, uint32_t value) {
     LOG_DEBUG("send_status_update: Call with following parameters message_type = %d, device = %d, value = %d", message_type, device, value);
 
     MessageForWebSocket* msg = allocateMessage();
@@ -71,11 +73,12 @@ void send_status_update(uint8_t message_type, uint8_t device, uint8_t target, ui
 
     LOG_DEBUG("send_status_update: Vor dem Hinzufügen zur Warteschlange: message_type = %d, device = %d, value = %d", msg->message_type, msg->device, msg->value);
 
+    // Nachricht zur WebSocket-Queue hinzufügen
     if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
-        LOG_ERROR("send_status_update: Failed to send message to WebSocketQueue");
-        freeMessage(msg);
+        LOG_ERROR("task_network.c: Failed to send JSON over WebSocket");
+        freeMessage(msg); // Nachricht freigeben, falls das Hinzufügen fehlschlägt
     } else {
-        LOG_INFO("send_status_update: Nachricht zur WebSocket-Warteschlange hinzugefügt");
+        LOG_INFO("task_network.c: JSON message added to WebSocketQueue");
     }
 }
 
@@ -93,19 +96,6 @@ const char* CommandTypeToString(HardwareCommandType commandType)
     }
 }
 
-const char* message_type_to_string(uint8_t message_type) {
-    switch (message_type) {
-    	case MESSAGE_TYPE_STATUS_UPDATE:
-    		return "status_update";
-        case MESSAGE_TYPE_REGISTER:
-            return "register";
-        case MESSAGE_TYPE_UPDATE:
-            return "controller_update";
-        default:
-            LOG_WARN("message_type_to_string: Received unknown message_type %d", message_type);
-            return "unknown";
-    }
-}
 
 
 
@@ -167,7 +157,7 @@ const char* action_to_string(uint8_t action) {
 
 
 
-void add_message_to_websocket_queue(uint8_t message_type, uint8_t device, uint8_t target, uint8_t action, uint16_t value) {
+void add_message_to_websocket_queue(const char *message_type, uint8_t device, uint8_t target, uint8_t action, uint16_t value) {
     MessageForWebSocket* msg = allocateMessage();
     if (msg == NULL) {
         LOG_ERROR("add_message_to_websocket_queue: Failed to allocate message");

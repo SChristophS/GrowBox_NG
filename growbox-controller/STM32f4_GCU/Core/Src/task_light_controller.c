@@ -236,6 +236,7 @@ void StartLightTask(void *argument)
 
         // Kurze Verzögerung vor der nächsten Iteration
         //vTaskDelay(pdMS_TO_TICKS(100));
+        osDelay(100);
     }
 }
 
@@ -278,6 +279,8 @@ static bool wait_for_start_time(struct tm *startTimeTm)
         LOG_INFO("task_light_controller:\tCurrent time is before start time. Waiting...");
         return false;
     }
+
+    LOG_INFO("task_light_controller:\t return");
 
     return true;
 }

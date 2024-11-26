@@ -241,6 +241,7 @@ void StartWaterControllerTask(void *argument)
 
         // Kurze Verzögerung vor der nächsten Iteration
         //vTaskDelay(pdMS_TO_TICKS(100));
+        osDelay(100);
     }
 }
 

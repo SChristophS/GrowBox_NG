@@ -10,8 +10,11 @@
 #include <time.h>
 
 #define EEPROM_AUTOMATIC_MODE_ADDR 		   0x0100
+#define EEPROM_MANUAL_MODE_ADDR 		   0x0102
 #define EEPROM_GROW_CYCLE_START_TIME_ADDR  0x0200
 #define EEPROM_GROW_CYCLE_CONFIG_ADDR      0x0300
+
+
 
 // Funktionsdeklarationen
 bool load_grow_cycle_config(GrowCycleConfig *config, struct tm *startTimeTm, bool *timeSynchronized);

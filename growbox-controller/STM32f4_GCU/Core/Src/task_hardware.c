@@ -71,6 +71,8 @@ void StartHardwareTask(void *argument)
         } else {
             LOG_ERROR("task_hardware.c: Failed to retrieve message from queue");
         }
+
+        osDelay(100);
     }
 }
 
