@@ -176,9 +176,17 @@ const osMessageQueueAttr_t xLightControllerQueue_attributes = {
   .mq_mem = &xLightControllerQueueBuffer,
   .mq_size = sizeof(xLightControllerQueueBuffer)
 };
+
+
+
+
+/* Definitions for xWebSocketQueue */
+#define MESSAGE_POINTER_SIZE sizeof(MessageForWebSocket*)
+
+
 /* Definitions for xWebSocketQueue */
 osMessageQueueId_t xWebSocketQueueHandle;
-uint8_t xWebSocketQueueBuffer[ 3 * 6 ];
+MessageForWebSocket* xWebSocketQueueBuffer[ 3 ]; // Array von Pointern
 osStaticMessageQDef_t xWebSocketQueueControlBlock;
 const osMessageQueueAttr_t xWebSocketQueue_attributes = {
   .name = "xWebSocketQueue",
@@ -187,6 +195,12 @@ const osMessageQueueAttr_t xWebSocketQueue_attributes = {
   .mq_mem = &xWebSocketQueueBuffer,
   .mq_size = sizeof(xWebSocketQueueBuffer)
 };
+
+
+
+
+
+
 /* Definitions for xHardwareQueue */
 osMessageQueueId_t xHardwareQueueHandle;
 uint8_t xHardwareQueueBuffer[ 2 * 8 ];
@@ -318,6 +332,9 @@ bool automaticMode;
 bool gConfigAvailable;
 struct tm gStartTimeTm;
 bool gTimeSynchronized;
+
+bool manualMode = false;
+
 
 // Heartbeat-Daten (definiert global)
 TaskHeartbeat task_heartbeats[MAX_MONITORED_TASKS];
@@ -486,8 +503,8 @@ int main(void)
   /* creation of xLightControllerQueue */
   xLightControllerQueueHandle = osMessageQueueNew (1, sizeof(uint8_t), &xLightControllerQueue_attributes);
 
-  /* creation of xWebSocketQueue */
-  xWebSocketQueueHandle = osMessageQueueNew (3, 6, &xWebSocketQueue_attributes);
+  /* Creation of xWebSocketQueue */
+  xWebSocketQueueHandle = osMessageQueueNew (3, sizeof(MessageForWebSocket*), &xWebSocketQueue_attributes);
 
   /* creation of xHardwareQueue */
   xHardwareQueueHandle = osMessageQueueNew (2, 8, &xHardwareQueue_attributes);
