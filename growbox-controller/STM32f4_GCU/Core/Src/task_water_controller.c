@@ -47,6 +47,11 @@ void StartWaterControllerTask(void *argument)
 {
     LOG_INFO("task_water_controller:\tStarting Water Controller Task");
 
+    LOG_INFO("task_water_controller:\tWaiting for 5 seconds");
+    //vTaskDelay(pdMS_TO_TICKS(5000));
+    osDelay(10000);
+    LOG_INFO("task_water_controller:\tWaiting done");
+
     // Registriere den Heartbeat
     if (!RegisterTaskHeartbeat("task_water_controller")) {
         LOG_ERROR("task_water_controller: Failed to register heartbeat");
@@ -54,10 +59,7 @@ void StartWaterControllerTask(void *argument)
     }
     LOG_INFO("task_water_controller:\tHeartbeat registered successfully");
 
-    LOG_INFO("task_water_controller:\tWaiting for 5 seconds");
-    //vTaskDelay(pdMS_TO_TICKS(5000));
-    osDelay(5000);
-    LOG_INFO("task_water_controller:\tWaiting done");
+
 
     // Variablen für die Wassersteuerung
     GrowCycleConfig growConfig;
@@ -211,21 +213,6 @@ void StartWaterControllerTask(void *argument)
             scheduleAdjusted = true;
         }
 
-        // 7. Automatikmodus prüfen
-        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
-        bool isAutomaticMode = automaticMode;
-        osMutexRelease(gAutomaticModeHandle);
-
-        LOG_DEBUG("task_water_controller:\tAutomatic mode status: %s", isAutomaticMode ? "ON" : "OFF");
-
-        if (!isAutomaticMode)
-        {
-            LOG_INFO("task_water_controller:\tAutomatic mode is disabled. Turning pumps off.");
-            ControlPump(false, PUMP_ZULAUF);
-            ControlPump(false, PUMP_ABLAUF);
-            //vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
 
         // 8. Wasserzeitplan verarbeiten
         process_watering_schedule(

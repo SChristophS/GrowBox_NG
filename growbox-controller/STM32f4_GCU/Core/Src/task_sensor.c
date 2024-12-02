@@ -19,7 +19,7 @@
 
 void StartSensorTask(void *argument)
 {
-    printf("task_sensor.c: Starting Sensor Task\n");
+	LOG_INFO("task_sensor.c: Starting Sensor Task\n");
 
     for (;;)
     {

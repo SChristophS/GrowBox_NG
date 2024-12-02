@@ -10,10 +10,7 @@
 #include "globals.h"
 #include "logger.h"
 #include "time_utils.h"
-
-bool load_automatic_mode(bool *automaticMode);
-bool save_automatic_mode(bool automaticMode);
-
+#include "task_network.h"
 
 
 bool save_grow_cycle_config(GrowCycleConfig *config);
@@ -46,12 +43,7 @@ void print_grow_cycle_config() {
 
     osMutexRelease(gGrowCycleConfigMutexHandle);
 
-    // automaticMode ausgeben
-    osMutexAcquire(gAutomaticModeHandle, osWaitForever);
-    printf("  AutomaticMode: %s\r\n", automaticMode ? "ON" : "OFF");
-    osMutexRelease(gAutomaticModeHandle);
-
-    // **Neu hinzugefügt: manualMode ausgeben**
+     // **Neu hinzugefügt: manualMode ausgeben**
     osMutexAcquire(gManualModeMutexHandle, osWaitForever);
     printf("  ManualMode: %s\r\n", manualMode ? "ON" : "OFF");
     osMutexRelease(gManualModeMutexHandle);
@@ -61,7 +53,6 @@ void print_grow_cycle_config() {
 void InitializeGrowCycleConfig(void) {
     LOG_INFO("state_manager.c: Initialize Grow Configuration");
 
-    bool storedAutomaticMode;
     bool storedManualMode;
     bool newConfigLoaded;
     GrowCycleConfig tempConfig;
@@ -102,19 +93,6 @@ void InitializeGrowCycleConfig(void) {
         osMutexAcquire(gConfigAvailableMutexHandle, osWaitForever);
         gConfigAvailable = false;
         osMutexRelease(gConfigAvailableMutexHandle);
-    }
-
-    // Lade den automatischen Modus
-    if (load_automatic_mode(&storedAutomaticMode)) {
-        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
-        automaticMode = storedAutomaticMode;
-        osMutexRelease(gAutomaticModeHandle);
-        LOG_INFO("state_manager.c: Loaded automaticMode: %s", automaticMode ? "ON" : "OFF");
-    } else {
-        osMutexAcquire(gAutomaticModeHandle, osWaitForever);
-        automaticMode = false;
-        osMutexRelease(gAutomaticModeHandle);
-        LOG_WARN("state_manager.c: Failed to load automaticMode, defaulting to OFF");
     }
 
     if (load_manual_mode(&storedManualMode)) {
@@ -202,56 +180,6 @@ bool save_grow_cycle_config(GrowCycleConfig *config) {
 
     printf("task_state_manager.c: Size of GrowCycleConfig: %lu bytes\r\n", (unsigned long)sizeof(GrowCycleConfig));
 
-    return true;
-}
-
-
-bool load_automatic_mode(bool *automaticMode) {
-    uint16_t address = EEPROM_AUTOMATIC_MODE_ADDR;
-    LOG_INFO("state_manager.c: Loading automaticMode from EEPROM at address 0x%04X\r\n", address);
-
-    osMutexAcquire(gEepromMutexHandle, osWaitForever);
-    if (!EEPROM_Read(address, (uint8_t *)automaticMode, sizeof(bool))) {
-        printf("task_state_manager.c: Failed to read automaticMode from EEPROM\r\n");
-        osMutexRelease(gEepromMutexHandle);
-        return false;
-    }
-    osMutexRelease(gEepromMutexHandle);
-
-    LOG_INFO("state_manager.c: automaticMode loaded successfully\r\n");
-    return true;
-}
-
-bool save_automatic_mode(bool automaticMode) {
-    osMutexAcquire(gEepromMutexHandle, osWaitForever);
-    uint16_t address = EEPROM_AUTOMATIC_MODE_ADDR;
-    printf("task_state_manager.c: Saving automaticMode to EEPROM at address 0x%04X\r\n", address);
-
-    if (!EEPROM_Write(address, (uint8_t *)&automaticMode, sizeof(bool))) {
-        printf("task_state_manager.c: Failed to write automaticMode to EEPROM\r\n");
-        osMutexRelease(gEepromMutexHandle);
-        return false;
-    }
-
-    // **Neu hinzugefügt: Lesen des gespeicherten Werts zur Validierung**
-    bool readBackAutomaticMode;
-    if (!EEPROM_Read(address, (uint8_t *)&readBackAutomaticMode, sizeof(bool))) {
-        printf("task_state_manager.c: Failed to read back automaticMode from EEPROM\r\n");
-        osMutexRelease(gEepromMutexHandle);
-        return false;
-    }
-
-    if (readBackAutomaticMode != automaticMode) {
-        printf("task_state_manager.c: Read back automaticMode does not match saved value\r\n");
-        osMutexRelease(gEepromMutexHandle);
-        return false;
-    } else {
-        printf("task_state_manager.c: Verified that automaticMode was saved correctly\r\n");
-    }
-
-    osMutexRelease(gEepromMutexHandle);
-
-    printf("task_state_manager.c: automaticMode saved and verified successfully\r\n");
     return true;
 }
 

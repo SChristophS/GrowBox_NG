@@ -53,10 +53,13 @@ void freeMessage(MessageForWebSocket* msg) {
 
 
 
-;
-
 void send_status_update(const char *message_type, uint8_t device, uint8_t target, uint32_t value) {
-    LOG_DEBUG("send_status_update: Call with following parameters message_type = %d, device = %d, value = %d", message_type, device, value);
+    LOG_DEBUG("send_status_update: Call with following parameters message_type = %s, device = %d, value = %d", message_type, device, value);
+
+    if (!is_registered) {
+        LOG_WARN("send_status_update: Not registered yet. Message not sent.");
+        return;
+    }
 
     MessageForWebSocket* msg = allocateMessage();
     if (msg == NULL) {
@@ -81,6 +84,41 @@ void send_status_update(const char *message_type, uint8_t device, uint8_t target
         LOG_INFO("task_network.c: JSON message added to WebSocketQueue");
     }
 }
+
+
+void send_register_message() {
+    MessageForWebSocket* msg = allocateMessage();
+    if (msg == NULL) {
+        LOG_ERROR("send_register_message: Failed to allocate message");
+        return;
+    }
+
+    // Nachricht initialisieren
+    msg->message_type = MESSAGE_TYPE_REGISTER; // Stellen Sie sicher, dass dies ein String ist
+    msg->device = DEVICE_CONTROLLER;
+    int ret = snprintf(msg->json_payload, sizeof(msg->json_payload),
+             "{\"message_type\":\"register\",\"device\":\"controller\",\"UID\":\"%s\"}",
+             uidStr);
+
+    if (ret < 0) {
+        LOG_ERROR("send_register_message: snprintf failed");
+        freeMessage(msg);
+        return;
+    } else if (ret >= sizeof(msg->json_payload)) {
+        LOG_WARN("send_register_message: JSON message was truncated");
+    }
+
+    LOG_DEBUG("send_register_message: msg->json_payload = %s", msg->json_payload);
+
+    // Nachricht zur Queue hinzufügen
+    if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
+        LOG_ERROR("send_register_message: Failed to send message to WebSocketQueue");
+        freeMessage(msg);
+    } else {
+        LOG_INFO("send_register_message: Register message added to WebSocketQueue");
+    }
+}
+
 
 const char* CommandTypeToString(HardwareCommandType commandType)
 {

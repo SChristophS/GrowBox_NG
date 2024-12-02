@@ -81,10 +81,10 @@ extern ControllerState gControllerState;
 extern GrowCycleConfig gGrowCycleConfig;
 
 /* TODO the name should be gAutomaticMode */
-extern bool automaticMode;
 extern bool gConfigAvailable;
 extern bool manualMode;
 extern char uidStr[25];
+extern bool is_registered;
 
 extern struct tm gStartTimeTm;
 extern bool gTimeSynchronized;
@@ -93,7 +93,6 @@ extern TaskHeartbeat task_heartbeats[MAX_MONITORED_TASKS];
 // Mutexe und Event-Gruppen
 extern osMutexId_t gControllerStateMutexHandle;
 extern osMutexId_t gGrowCycleConfigMutexHandle;
-extern osMutexId_t gAutomaticModeHandle;
 extern osMutexId_t gEepromMutexHandle;
 extern osMutexId_t gLoggerMutexHandle;
 extern osMutexId_t gConfigAvailableMutexHandle;

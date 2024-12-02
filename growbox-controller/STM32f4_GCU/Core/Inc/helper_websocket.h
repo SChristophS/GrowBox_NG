@@ -20,6 +20,9 @@ const char* action_to_string(uint8_t action);
 
 void initialize_message_pool();
 
+void send_register_message();
+void send_ready_message();
+
 void freeMessage(MessageForWebSocket* msg);
 MessageForWebSocket* allocateMessage();
 

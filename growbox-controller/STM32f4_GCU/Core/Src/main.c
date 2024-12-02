@@ -237,14 +237,6 @@ const osMutexAttr_t gGrowCycleConfigMutex_attributes = {
   .cb_mem = &gGrowCycleConfigMutexControlBlock,
   .cb_size = sizeof(gGrowCycleConfigMutexControlBlock),
 };
-/* Definitions for gAutomaticMode */
-osMutexId_t gAutomaticModeHandle;
-osStaticMutexDef_t gAutomaticModeControlBlock;
-const osMutexAttr_t gAutomaticMode_attributes = {
-  .name = "gAutomaticMode",
-  .cb_mem = &gAutomaticModeControlBlock,
-  .cb_size = sizeof(gAutomaticModeControlBlock),
-};
 /* Definitions for gEepromMutex */
 osMutexId_t gEepromMutexHandle;
 osStaticMutexDef_t gEepromMutexControlBlock;
@@ -323,10 +315,11 @@ const osEventFlagsAttr_t INITIALIZATION_COMPLETE_attributes = {
 ControllerState gControllerState;
 GrowCycleConfig gGrowCycleConfig;
 char uidStr[25];
-bool automaticMode;
 bool gConfigAvailable;
 struct tm gStartTimeTm;
 bool gTimeSynchronized;
+bool is_registered = false;
+
 
 bool manualMode = false;
 
@@ -443,7 +436,6 @@ int main(void)
   gControllerState.sensorOben = false;
   gControllerState.sensorUnten = false;
   gControllerState.lightIntensity = 0;
-  gControllerState.automaticMode = false;
 
 
   GetSTM32UID(uidStr);
@@ -460,9 +452,6 @@ int main(void)
 
   /* creation of gGrowCycleConfigMutex */
   gGrowCycleConfigMutexHandle = osMutexNew(&gGrowCycleConfigMutex_attributes);
-
-  /* creation of gAutomaticMode */
-  gAutomaticModeHandle = osMutexNew(&gAutomaticMode_attributes);
 
   /* creation of gEepromMutex */
   gEepromMutexHandle = osMutexNew(&gEepromMutex_attributes);
@@ -609,15 +598,14 @@ int main(void)
   /* Überprüfen Sie, ob die Mutexe erfolgreich erstellt wurden */
   if (gControllerStateMutexHandle == NULL ||
       gGrowCycleConfigMutexHandle == NULL ||
-      gAutomaticModeHandle == NULL ||
       gEepromMutexHandle == NULL) {
       printf("main.c:\t Error: Failed to create one or more mutexes\r\n");
       Error_Handler();
   }
 
   LOG_INFO("main.c:\t calling InitializeGrowCycleConfig");
-
   InitializeGrowCycleConfig();
+
 
   printf("main.c:\t - done\r\n");
   /* add events, ... */

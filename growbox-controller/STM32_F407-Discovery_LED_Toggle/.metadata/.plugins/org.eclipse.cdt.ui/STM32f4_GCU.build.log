@@ -1,0 +1,10 @@
+16:24:58 **** Incremental Build of configuration Debug for project STM32f4_GCU ****
+make -j12 all 
+arm-none-eabi-size  STM32f4_GCU.elf 
+   text	   data	    bss	    dec	    hex	filename
+ 130148	    664	 111320	 242132	  3b1d4	STM32f4_GCU.elf
+Finished building: default.size.stdout
+ 
+
+16:24:59 Build Finished. 0 errors, 0 warnings. (took 461ms)
+

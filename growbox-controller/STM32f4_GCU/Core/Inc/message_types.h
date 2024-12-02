@@ -12,7 +12,7 @@
 #define MESSAGE_TYPE_STATUS_RESPONSE "StatusResponse"
 #define MESSAGE_TYPE_CONTROLLER_STATE "ControllerStateResponse"
 #define MESSAGE_TYPE_GROWCYCLE_CONFIG "GrowCycleConfigResponse"
-#define MESSAGE_TYPE_AUTOMATICMODE_STATE "AutomaticModeResponse"
+#define MESSAGE_TYPE_MANUALMODE_STATE "ManualModeResponse"
 
 
 /*
