@@ -1,0 +1,7 @@
+2x AT24C256 			I2C Schnittstelle 256k Bits EEPROM
+1x DS3231			I2C Schnittstelle Real Time Clock
+1x L298N			Dual H Bridge als Motortreiber und 5V Stromversorgung
+2x PC817			Optokoppler für PWM, 4 PWM Ausgänge insgesamt notwendig
+4x Platinenrelais tbd		08/15 Relais für 230V schalten
+
+

@@ -31,12 +31,14 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+void InitializeTaskHeartbeats(void);
+bool RegisterTaskHeartbeat(const char *task_name);
+void UpdateTaskHeartbeat(const char *task_name) ;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

@@ -6,3 +6,6 @@ growbox-controller/STM32f4_GCU/.settings/
 growbox-controller/STM32F1_GCU/Debug/
 growbox-controller/STM32f4_GCU/Debug/
 /growbox-controller/STM32f4_GCU/Debug/
+
+# Ignore stm32_analysis_env directory
+growbox-controller/Tools/CodeChecker/stm32_analysis_env/

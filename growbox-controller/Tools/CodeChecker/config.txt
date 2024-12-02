@@ -1,0 +1,3 @@
+source_path=path/to/your/source/files
+header_path=path/to/your/header/files
+output_log=path/to/output_log.log

@@ -7,33 +7,8 @@
 #include "uart_redirect.h"
 #include "task_hardware.h"
 #include "stm32f4xx_hal.h"
-//
-//void EnablePump(uint8_t pumpId)
-//{
-//    if (pumpId == PUMP_ZULAUF) {
-//    	printf("hardware.c: Enable pump with deviceID %d == PUMP_ZULAUF\r\n", pumpId);
-//        HAL_GPIO_WritePin(PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, GPIO_PIN_SET);
-//
-//    } else if (pumpId == PUMP_ABLAUF) {
-//    	printf("hardware.c: Enable pump with deviceID %d == PUMP_ABLAUF\r\n", pumpId);
-//        HAL_GPIO_WritePin(PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, GPIO_PIN_SET);
-//        // Weitere Pins setzen, falls nötig
-//    }
-//}
-//
-//void DisablePump(uint8_t pumpId)
-//{
-//    if (pumpId == PUMP_ZULAUF) {
-//    	printf("hardware.c: Disable pump with deviceID %d == PUMP_ZULAUF\r\n", pumpId);
-//        HAL_GPIO_WritePin(PUMP2_ENABLE_GPIO_Port, PUMP2_ENABLE_Pin, GPIO_PIN_RESET);
-//        // Weitere Pins zurücksetzen, falls nötig
-//    } else if (pumpId == PUMP_ABLAUF) {
-//    	printf("hardware.c: Disable pump with deviceID %d == PUMP_ZULAUF\r\n", pumpId);
-//    	HAL_GPIO_WritePin(PUMP1_ENABLE_GPIO_Port, PUMP1_ENABLE_Pin, GPIO_PIN_RESET);
-//
-//        // Weitere Pins zurücksetzen, falls nötig
-//    }
-//}
+#include "stm32f4xx_hal_def.h"
+#include "logger.h"
 
 void EnablePump(uint8_t pumpId)
 {
@@ -73,25 +48,56 @@ void DisablePump(uint8_t pumpId)
     }
 }
 
-
-void PWM_SetDutyCycle(TIM_HandleTypeDef *htim, uint32_t Channel, uint16_t DutyCycle)
+HAL_StatusTypeDef PWM_SetDutyCycle(TIM_HandleTypeDef *htim, uint32_t Channel, uint16_t DutyCycle)
 {
+    // Überprüfe, ob der DutyCycle-Wert gültig ist (0 bis 100)
+    if (DutyCycle > 100) {
+        LOG_WARN("PWM_SetDutyCycle: Invalid DutyCycle value %d. Value should be between 0 and 100.", DutyCycle);
+        return HAL_ERROR;
+    }
+
     // Invertiere den DutyCycle-Wert
     uint32_t InvertedDutyCycle = 100 - DutyCycle;
 
-    // Berechne den Pulse-Wert basierend auf der Periodenwert
+    // Berechne den Pulse-Wert basierend auf dem Periodenwert
     uint32_t Pulse = (InvertedDutyCycle * (htim->Init.Period + 1)) / 100;
 
-    printf("task_light_controller.c:\tset dutyciclye to: %lu\r\n", Pulse);
+    LOG_INFO("PWM_SetDutyCycle: Setting duty cycle to: %lu", Pulse);
 
+    // Überprüfe, ob der Timer korrekt initialisiert wurde
+    if (htim == NULL) {
+        LOG_ERROR("PWM_SetDutyCycle: Timer handle is NULL");
+        return HAL_ERROR;
+    }
+
+    // Setze den neuen Compare-Wert
     __HAL_TIM_SET_COMPARE(htim, Channel, Pulse);
+
+    return HAL_OK;
 }
 
-void SetLightIntensity(uint8_t intensity)
+
+
+HAL_StatusTypeDef SetLightIntensity(uint8_t intensity)
 {
+    // Überprüfe, ob die Intensität innerhalb des gültigen Bereichs liegt
+    if (intensity > 100) {
+        LOG_WARN("SetLightIntensity: Invalid intensity value %d. Value should be between 0 and 100.", intensity);
+        return HAL_ERROR;
+    }
+
     // Implementiere die PWM-Steuerung für die Lichtintensität
-	PWM_SetDutyCycle(&LED_DIM_TIM, LED_DIM_CHANNEL, intensity);
+    HAL_StatusTypeDef status = PWM_SetDutyCycle(&LED_DIM_TIM, LED_DIM_CHANNEL, intensity);
+    if (status != HAL_OK) {
+        LOG_ERROR("SetLightIntensity: Failed to set light intensity to %d", intensity);
+    } else {
+        LOG_INFO("SetLightIntensity: Light intensity set to %d", intensity);
+    }
+
+    return status;
 }
+
+
 
 
 bool ReadSensorOben(void) {

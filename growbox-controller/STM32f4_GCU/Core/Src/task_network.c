@@ -7,31 +7,136 @@
 #include "wizchip_init.h"
 #include "helper_websocket.h"
 #include "controller_state.h"
-#include "uart_redirect.h"
+#include "logger.h"
 #include "globals.h"
+
+
+#include "core_cm4.h"
+
+#include "state_manager.h"
 #include "ds3231.h"
 #include "eeprom.h"
-#include "schedules.h"
-#include "task_state_manager.h"
+
 #include "cJSON.h"
 #include "time_utils.h"
 #include "sha1.h"
 #include "base64.h"
+#include "task_water_controller.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <inttypes.h>
+
+#include "message_types.h"
 
 
+#define WEBSOCKET_GUID "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-/* Netzwerk-Einstellungen */
-#define MY_IP          {192, 168, 178, 100}
-#define SUBNET_MASK    {255, 255, 255, 0}
-#define GATEWAY        {192, 168, 178, 1}
-#define DNS_SERVER     {8, 8, 8, 8}
-#define MAC_ADDRESS    {0x00, 0x08, 0xdc, 0xab, 0xcd, 0xef}
-#define LOCAL_PORT     50000
+
+#define MAX_WEBSOCKET_FRAME_SIZE 65535
+uint8_t websocket_frame_buffer[MAX_WEBSOCKET_FRAME_SIZE]; // Statischer Puffer
+int websocket_connected = false;
+
+// WebSocket Zustand
+typedef enum {
+    WS_STATE_HANDSHAKE,
+    WS_STATE_CONNECTED
+} websocket_state_t;
+
+websocket_state_t websocket_state = WS_STATE_HANDSHAKE;
+
+
+/* Funktionsprototypen */
+
+/* Hauptfunktion der Netzwerkaufgabe */
+void StartNetworkTask(void *argument);
+void process_websocket_frame(uint8_t *buf, int32_t size, uint8_t sock);
+/* Initialisiert das Netzwerk */
+void network_init(void);
+void send_pong_frame(uint8_t sock, uint8_t *payload, uint64_t payload_length);
+/* Überprüft den Socket-Status und führt entsprechende Aktionen aus */
+void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port);
+
+/* Führt den WebSocket-Handschlag durch */
+bool websocket_handshake(uint8_t sock);
+
+/* Verarbeitet ausgehende WebSocket-Nachrichten */
+void process_websocket_messages(uint8_t sock);
+
+/* Sendet eine WebSocket-Nachricht */
+void send_websocket_message(uint8_t sock, MessageForWebSocket *message);
+
+/* Verarbeitet empfangene WebSocket-Daten */
+void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size);
+
+/* Verarbeitet empfangene JSON-Daten */
+void process_received_data(const char *json_payload);
+
+/* Handhabt eine TimeSync-Nachricht */
+void handle_timesync_message(cJSON *root);
+
+/* Handhabt eine StatusRequest-Nachricht */
+void handle_status_request(cJSON *root);
+
+/* Handhabt eine EraseEEPROM-Nachricht */
+void handle_erase_eeprom_message(void);
+
+/* Sendet die GrowCycle-Konfiguration */
+void send_grow_cycle_config(void);
+
+/* Sendet den Controller-Zustand */
+void send_controller_state(void);
+
+/* Konvertiert die GrowCycle-Konfiguration in JSON */
+cJSON *grow_cycle_config_to_json(GrowCycleConfig *config);
+
+/* Konvertiert den Controller-Zustand in JSON */
+cJSON *controller_state_to_json(ControllerState *state);
+
+/* Sendet JSON über WebSocket */
+void send_json_over_websocket(const char *json_string);
+
+/* Parsen von ControlCommand-Nachrichten */
+void parse_control_command(cJSON *root);
+
+/* Handhabt Lichtbefehle */
+void handle_light_command(const char *action, cJSON *value);
+
+/* Handhabt Pumpenbefehle */
+void handle_pump_command(const char *action, int deviceId, cJSON *value);
+
+/* Handhabt Systembefehle */
+void handle_system_command(const char *action, cJSON *value);
+
+/* Handhabt Wasserbefehle */
+void handle_water_command(const char *action, cJSON *value);
+
+/* Parsen von neuen GrowCycle-Nachrichten */
+void parse_new_grow_cycle(cJSON *root);
+
+/* Parsen von LED-Zeitplänen */
+void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config);
+
+/* Parsen von Bewässerungszeitplänen */
+void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config);
+
+/* Synchronisiert die RTC */
+void synchronize_rtc(const char *iso8601_time);
+
+/* Berechnet die Gesamtdauer des GrowCycle */
+uint32_t calculate_total_duration(GrowCycleConfig *config);
+
+/* Sendet registrier message */
+
+void handle_timesync_message(cJSON *root);
+
+void handle_automatic_mode_request(cJSON *root);
+void send_manualMode_state(void);
+void send_ping_frame(uint8_t sock);
+
+
 
 /* Zielserver-Einstellungen */
 uint8_t destip[4] = {192, 168, 178, 25}; // IP-Adresse des Zielservers
@@ -39,30 +144,9 @@ uint16_t destport = 8085;                // Port des Zielservers
 
 #define MAX_BUFFER_SIZE 2048
 
-/* Funktionsprototypen */
-void StartNetworkTask(void *argument);
-void network_init(void);
-void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size);
-void process_received_data(const char *json_payload);
-void parse_control_command(cJSON *root);
-void parse_new_grow_cycle(cJSON *root);
-void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config);
-void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config);
-bool websocket_handshake(uint8_t sock);
-void process_websocket_messages(uint8_t sock);
-void send_websocket_message(uint8_t sock, MessageForWebSocket *message);
-void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected);
-void synchronize_rtc(const char *iso8601_time);
-void handle_water_command(const char *action, cJSON *value);
-void handle_system_command(const char *action, cJSON *value);
-uint32_t calculate_total_duration(GrowCycleConfig *config);
-void handle_light_command(const char *action, cJSON *value);
-void handle_pump_command(const char *action, int deviceId, cJSON *value);
-bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time);
-time_t ds3231_time_to_timestamp(DS3231_Time *time);
 
 /* Globale Variablen */
-uint8_t gDATABUF[MAX_BUFFER_SIZE];
+uint8_t DATABUF[MAX_BUFFER_SIZE];
 
 wiz_NetInfo gWIZNETINFO = {
     .mac = MAC_ADDRESS,
@@ -75,100 +159,296 @@ wiz_NetInfo gWIZNETINFO = {
 
 void StartNetworkTask(void *argument)
 {
-    printf("task_network.c: Starting Network Task\r\n");
+    LOG_INFO("task_network.c: Starting Network Task");
 
-    printf("task_network.c: calling InitializeGrowCycleConfig\r\n");
-    InitializeGrowCycleConfig();
+	// Registriere den Heartbeat
+	if (!RegisterTaskHeartbeat("task_network")) {
+		LOG_ERROR("task_network: Failed to register heartbeat");
+		Error_Handler();
+	}
 
+    // Initialisiere den Zufallszahlengenerator einmalig
+    srand((unsigned int)time(NULL));
 
     /* Netzwerk initialisieren */
     network_init();
 
     uint8_t sock = 0;
     uint16_t any_port = LOCAL_PORT;
-    int websocket_connected = 0;
+    uint32_t last_ping_time = 0;
+    const uint32_t ping_interval = 30000; // 30 Sekunden
 
     /* Socket initialisieren */
     if (socket(sock, Sn_MR_TCP, any_port++, 0x00) != sock) {
         if (any_port == 0xffff) any_port = 50000;
     }
-    printf("task_network.c: Socket %d opened\r\n", sock);
+    LOG_INFO("task_network.c: Socket %d opened", sock);
 
     for (;;) {
+    	UpdateTaskHeartbeat("task_network");
+
         uint8_t socket_status = getSn_SR(sock);
-        check_socket_status(&socket_status, sock, &any_port, &websocket_connected);
+        //LOG_DEBUG("task_network.c: Socket status after recv: %d", socket_status);
+
+        check_socket_status(&socket_status, sock, &any_port);
 
         int32_t ret;
         uint16_t size = 0;
         if ((size = getSn_RX_RSR(sock)) > 0) {
+
             if (size > MAX_BUFFER_SIZE - 1) size = MAX_BUFFER_SIZE - 1;
-            memset(gDATABUF, 0, MAX_BUFFER_SIZE);
-            ret = recv(sock, gDATABUF, size);
+            memset(DATABUF, 0, MAX_BUFFER_SIZE);
+            ret = recv(sock, DATABUF, size);
+
             if (ret <= 0) {
-                printf("task_network.c: Error receiving data. Socket closed.\r\n");
+                int err = getSn_IR(sock);
+                LOG_ERROR("task_network.c: Error receiving data. Socket closed. Error code: %d", err);
                 close(sock);
                 websocket_connected = 0;
             } else {
-                process_received_websocket_data(sock, gDATABUF, ret);
+            	LOG_INFO("task_network.c: process_received_websocket_data");
+                process_received_websocket_data(sock, DATABUF, ret);
+
+                uint8_t socket_status_after = getSn_SR(sock);
+                LOG_DEBUG("task_network.c: Socket status after processing data: %d", socket_status_after);
+
+                if (socket_status_after == SOCK_CLOSED) {
+                    LOG_ERROR("task_network.c: Socket closed after processing data");
+                    websocket_connected = 0;
+                }
             }
         }
 
         /* Verarbeite ausgehende Nachrichten */
         if (websocket_connected) {
+
+            uint32_t current_time = osKernelGetTickCount();
+             if (current_time - last_ping_time >= ping_interval) {
+                 send_ping_frame(sock);
+                 last_ping_time = current_time;
+             }
+
             process_websocket_messages(sock);
         }
 
-        osDelay(100);
+        osDelay(50);
     }
 }
 
+// Funktion zum Verarbeiten empfangener Daten
+void handle_received_data(uint8_t sock) {
+    uint8_t buffer[MAX_BUFFER_SIZE];
+    int32_t len = recv(sock, buffer, sizeof(buffer));
+    if (len <= 0) {
+        LOG_ERROR("task_network.c: Connection closed or error");
+        close(sock);
+        websocket_state = WS_STATE_HANDSHAKE;
+        return;
+    }
 
-void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port, int *websocket_connected)
+    if (websocket_state == WS_STATE_HANDSHAKE) {
+        buffer[len] = '\0';
+        LOG_INFO("task_network.c: Handshake response:\r\n%s", buffer);
+
+        // Überprüfen der Handshake-Antwort
+        if (strstr((char *)buffer, "HTTP/1.1 101 Switching Protocols") &&
+            strstr((char *)buffer, "Upgrade: websocket") &&
+            strstr((char *)buffer, "Connection: Upgrade")) {
+            LOG_INFO("task_network.c: WebSocket handshake status lines verified");
+
+            // Weitere Überprüfungen wie Sec-WebSocket-Accept Verification
+            // ...
+
+            websocket_state = WS_STATE_CONNECTED;
+            LOG_INFO("task_network.c: WebSocket handshake successful");
+
+            // Sende send_register_message
+            // send_register_message();
+        } else {
+            LOG_ERROR("task_network.c: WebSocket handshake failed");
+            close(sock);
+        }
+    } else if (websocket_state == WS_STATE_CONNECTED) {
+        process_websocket_frame(buffer, len, sock);
+    }
+}
+
+// Funktion zum Starten der Verbindung und des Empfangs
+void connect_and_listen(uint8_t sock) {
+    while (1) {
+        handle_received_data(sock);
+        // Nach dem Schließen der Verbindung kann hier ggf. eine Wiederverbindung implementiert werden
+    }
+}
+
+// Funktion zum Verarbeiten empfangener WebSocket-Frames
+void process_websocket_frame(uint8_t *buf, int32_t size, uint8_t sock) {
+    if (size < 2) {
+        LOG_ERROR("task_network.c: Incomplete WebSocket frame received");
+        return;
+    }
+
+    uint8_t fin = (buf[0] & 0x80) >> 7;
+    uint8_t opcode = buf[0] & 0x0F;
+    bool mask = (buf[1] & 0x80) >> 7;
+    uint64_t payload_length = buf[1] & 0x7F;
+    int offset = 2;
+
+    if (payload_length == 126) {
+        if (size < 4) {
+            LOG_ERROR("task_network.c: Incomplete extended payload length");
+            return;
+        }
+        payload_length = (buf[2] << 8) | buf[3];
+        offset += 2;
+    } else if (payload_length == 127) {
+        if (size < 10) {
+            LOG_ERROR("task_network.c: Incomplete extended payload length");
+            return;
+        }
+        payload_length = 0;
+        for (int i = 0; i < 8; i++) {
+            payload_length = (payload_length << 8) | buf[offset + i];
+        }
+        offset += 8;
+    }
+
+    uint8_t masking_key[4] = {0};
+    if (mask) {
+        if (size < offset + 4) {
+            LOG_ERROR("task_network.c: Incomplete masking key");
+            return;
+        }
+        memcpy(masking_key, &buf[offset], 4);
+        offset += 4;
+    }
+
+    if (size < offset + payload_length) {
+        LOG_ERROR("task_network.c: Incomplete payload data");
+        return;
+    }
+
+    uint8_t *payload = &buf[offset];
+    if (mask) {
+        for (uint64_t i = 0; i < payload_length; i++) {
+            payload[i] ^= masking_key[i % 4];
+        }
+    }
+
+    if (opcode == 0x1) { // Text frame
+        // Sicherstellen, dass das Payload null-terminiert ist
+        char text_payload[payload_length + 1];
+        memcpy(text_payload, payload, payload_length);
+        text_payload[payload_length] = '\0';
+        LOG_INFO("task_network.c: Received Text Frame: %s", text_payload);
+        process_received_data(text_payload);
+    } else if (opcode == 0x8) { // Close frame
+        LOG_INFO("task_network.c: Received Close Frame");
+        close(sock);
+        websocket_state = WS_STATE_HANDSHAKE;
+    } else if (opcode == 0x9) { // Ping frame
+        LOG_INFO("task_network.c: Received Ping Frame, sending Pong");
+        send_pong_frame(sock, payload, payload_length);
+    } else if (opcode == 0xA) { // Pong frame
+        LOG_INFO("task_network.c: Received Pong Frame");
+    } else {
+        LOG_WARN("task_network.c: Received unsupported WebSocket opcode: %d", opcode);
+    }
+}
+
+// Funktion zum Senden von Pong-Frames
+void send_pong_frame(uint8_t sock, uint8_t *payload, uint64_t payload_length) {
+    if (payload_length > MAX_WEBSOCKET_FRAME_SIZE - 6) { // 2 Byte Header + 4 Byte Masking Key
+        LOG_ERROR("send_pong_frame: Pong payload too large");
+        return;
+    }
+
+    uint8_t masking_key[4];
+    // Generiere einen zufälligen Masking Key
+    for (int i = 0; i < 4; i++) {
+        masking_key[i] = rand() % 256;
+    }
+
+    // Erstelle den Header
+    websocket_frame_buffer[0] = 0x8A; // FIN bit gesetzt, Opcode für Pong ist 0xA
+    if (payload_length <= 125) {
+        websocket_frame_buffer[1] = 0x80 | payload_length; // Maskenbit gesetzt
+        memcpy(&websocket_frame_buffer[2], masking_key, 4); // Masking Key
+        // Maskiere den Payload
+        for (uint64_t i = 0; i < payload_length; i++) {
+            websocket_frame_buffer[6 + i] = payload[i] ^ masking_key[i % 4];
+        }
+    } else if (payload_length <= 65535) {
+        websocket_frame_buffer[1] = 0x80 | 126; // Maskenbit gesetzt, Extended Payload-Länge
+        websocket_frame_buffer[2] = (payload_length >> 8) & 0xFF;
+        websocket_frame_buffer[3] = payload_length & 0xFF;
+        memcpy(&websocket_frame_buffer[4], masking_key, 4); // Masking Key
+        // Maskiere den Payload
+        for (uint64_t i = 0; i < payload_length; i++) {
+            websocket_frame_buffer[8 + i] = payload[i] ^ masking_key[i % 4];
+        }
+    } else {
+        LOG_ERROR("send_pong_frame: Pong payload too large");
+        return;
+    }
+
+    size_t frame_size = 2 + ((payload_length > 125 && payload_length <= 65535) ? 6 : 6) + payload_length;
+    send(sock, websocket_frame_buffer, frame_size);
+    LOG_INFO("send_pong_frame: Sent Pong frame with payload length: %" PRIu64, payload_length);
+}
+
+
+void check_socket_status(uint8_t *socket_status, uint8_t sock, uint16_t *any_port)
 {
     switch (*socket_status) {
         case SOCK_CLOSED:
-            printf("task_network.c: Socket %d closed, reopening...\r\n", sock);
+            LOG_INFO("task_network.c: Socket %d closed, reopening...", sock);
             if ((socket(sock, Sn_MR_TCP, (*any_port)++, 0x00)) != sock) {
                 if (*any_port == 0xffff) *any_port = 50000;
             }
-            printf("task_network.c: Socket %d opened\r\n", sock);
-            *websocket_connected = 0;
+            LOG_INFO("task_network.c: Socket %d opened", sock);
+            websocket_connected = 0;
             break;
 
         case SOCK_INIT:
-            printf("task_network.c: Socket %d is initialized.\r\n", sock);
-            printf("task_network.c: Trying to connect to %d.%d.%d.%d:%d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
+            LOG_INFO("task_network.c: Socket %d is initialized.", sock);
+            LOG_INFO("task_network.c: Trying to connect to %d.%d.%d.%d:%d",
+                     destip[0], destip[1], destip[2], destip[3], destport);
             if (connect(sock, destip, destport) != SOCK_OK) {
-                printf("task_network.c: Failed to connect to server\r\n");
+                LOG_ERROR("task_network.c: Failed to connect to server");
             }
             break;
 
         case SOCK_ESTABLISHED:
             if (getSn_IR(sock) & Sn_IR_CON) {
-                printf("task_network.c: Socket %d connected to %d.%d.%d.%d:%d\r\n", sock, destip[0], destip[1], destip[2], destip[3], destport);
+                LOG_INFO("task_network.c: Socket %d connected to %d.%d.%d.%d:%d",
+                         sock, destip[0], destip[1], destip[2], destip[3], destport);
                 setSn_IR(sock, Sn_IR_CON);
             }
 
-            if (!*websocket_connected) {
+            if (!websocket_connected) {
                 /* WebSocket-Handshake durchführen */
                 if (websocket_handshake(sock)) {
-                    printf("task_network.c: WebSocket handshake successful\r\n");
-                    *websocket_connected = 1;
+                    LOG_INFO("task_network.c: WebSocket handshake successful");
+                    websocket_connected = 1;
 
-                    // Registrierungsnachricht senden
-					add_message_to_websocket_queue(MESSAGE_TYPE_REGISTER, DEVICE_CONTROLLER, 0, 0, 0);
+                    LOG_INFO("task_network.c: now send_register_message");
+                    send_register_message();
+                    LOG_INFO("task_network.c: done");
+
+
                 } else {
-                    printf("task_network.c: WebSocket handshake failed\r\n");
+                    LOG_ERROR("task_network.c: WebSocket handshake failed");
                     close(sock);
-                    *websocket_connected = 0;
+                    websocket_connected = 0;
                 }
             }
             break;
 
         case SOCK_CLOSE_WAIT:
-            printf("task_network.c: Socket %d close wait\r\n", sock);
+            LOG_INFO("task_network.c: Socket %d close wait", sock);
             disconnect(sock);
-            *websocket_connected = 0;
+            websocket_connected = 0;
             break;
 
         default:
@@ -185,167 +465,246 @@ void network_init(void)
     wizchip_getnetinfo(&gWIZNETINFO);
 
     ctlwizchip(CW_GET_ID, (void*)tmpstr);
-    printf("task_network.c: WIZCHIP Initialized with ID: %s\r\n", tmpstr);
+    LOG_INFO("task_network.c: WIZCHIP Initialized with ID: %s", tmpstr);
 
-    printf("task_network.c: MAC Address: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
-           gWIZNETINFO.mac[0], gWIZNETINFO.mac[1], gWIZNETINFO.mac[2],
-           gWIZNETINFO.mac[3], gWIZNETINFO.mac[4], gWIZNETINFO.mac[5]);
+    LOG_INFO("task_network.c: MAC Address: %02X:%02X:%02X:%02X:%02X:%02X",
+             gWIZNETINFO.mac[0], gWIZNETINFO.mac[1], gWIZNETINFO.mac[2],
+             gWIZNETINFO.mac[3], gWIZNETINFO.mac[4], gWIZNETINFO.mac[5]);
 
-    printf("task_network.c: IP Address: %d.%d.%d.%d\r\n",
-           gWIZNETINFO.ip[0], gWIZNETINFO.ip[1], gWIZNETINFO.ip[2], gWIZNETINFO.ip[3]);
+    LOG_INFO("task_network.c: IP Address: %d.%d.%d.%d",
+             gWIZNETINFO.ip[0], gWIZNETINFO.ip[1], gWIZNETINFO.ip[2], gWIZNETINFO.ip[3]);
 
-    printf("task_network.c: Subnet Mask: %d.%d.%d.%d\r\n",
-           gWIZNETINFO.sn[0], gWIZNETINFO.sn[1], gWIZNETINFO.sn[2], gWIZNETINFO.sn[3]);
+    LOG_INFO("task_network.c: Subnet Mask: %d.%d.%d.%d",
+             gWIZNETINFO.sn[0], gWIZNETINFO.sn[1], gWIZNETINFO.sn[2], gWIZNETINFO.sn[3]);
 
-    printf("task_network.c: Gateway: %d.%d.%d.%d\r\n",
-           gWIZNETINFO.gw[0], gWIZNETINFO.gw[1], gWIZNETINFO.gw[2], gWIZNETINFO.gw[3]);
+    LOG_INFO("task_network.c: Gateway: %d.%d.%d.%d",
+             gWIZNETINFO.gw[0], gWIZNETINFO.gw[1], gWIZNETINFO.gw[2], gWIZNETINFO.gw[3]);
 }
 
 bool websocket_handshake(uint8_t sock)
 {
-    printf("task_network.c: Performing WebSocket handshake\r\n");
+    LOG_INFO("task_network.c: Performing WebSocket handshake");
 
-    char request[] = "GET /chat HTTP/1.1\r\n"
-                     "Host: example.com\r\n"
-                     "Upgrade: websocket\r\n"
-                     "Connection: Upgrade\r\n"
-                     "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n"
-                     "Sec-WebSocket-Version: 13\r\n\r\n";
+    // Generieren eines zufälligen 16-Byte-Keys
+    uint8_t random_key[16];
+    for (int i = 0; i < 16; i++) {
+        random_key[i] = rand() % 256;
+    }
 
+    // Base64-kodieren des zufälligen Keys
+    char sec_websocket_key[25]; // 16 Bytes -> 24 Base64-Zeichen + Nullterminator
+    size_t encoded_length = base64_encode(random_key, 16, sec_websocket_key, sizeof(sec_websocket_key) - 1);
+    sec_websocket_key[encoded_length] = '\0'; // Nullterminierung
+
+    // Debug: Log des generierten Sec-WebSocket-Key und seiner Länge
+    LOG_DEBUG("task_network.c: Generated Sec-WebSocket-Key: %s (Length: %lu)", sec_websocket_key, (unsigned long)encoded_length);
+
+    // Erstellen der Handshake-Anfrage mit korrektem Host und dynamisch generiertem Sec-WebSocket-Key
+    char request[512];
+    snprintf(request, sizeof(request),
+             "GET /chat HTTP/1.1\r\n"
+             "Host: 192.168.178.25:8085\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: %s\r\n"
+             "Sec-WebSocket-Version: 13\r\n\r\n",
+             sec_websocket_key);
+
+    // Debug: Log der Handshake-Anfrage
+    LOG_DEBUG("task_network.c: Sending handshake request:\n%s", request);
+
+    // Senden der Handshake-Anfrage über den Socket
     send(sock, (uint8_t *)request, strlen(request));
 
     /* Warten auf die Antwort */
     int32_t len;
     uint8_t response[MAX_BUFFER_SIZE];
-    osDelay(500); // Warte etwas auf die Antwort
+    osDelay(500); // Wartezeit anpassen, falls nötig
+
     if ((len = recv(sock, response, sizeof(response) - 1)) <= 0) {
-        printf("task_network.c: Error receiving handshake response\r\n");
+        LOG_ERROR("task_network.c: Error receiving handshake response");
         return false;
     }
 
     response[len] = '\0';
-    printf("task_network.c: Handshake response:\r\n%s\r\n", response);
+    LOG_INFO("task_network.c: Handshake response:\r\n%s", response);
 
     /* Überprüfen der Antwort */
     if (strstr((char *)response, "HTTP/1.1 101 Switching Protocols") != NULL &&
         strstr((char *)response, "Upgrade: websocket") != NULL &&
         strstr((char *)response, "Connection: Upgrade") != NULL) {
-        printf("task_network.c: WebSocket handshake successful\r\n");
-        return true;
-    } else {
-        printf("task_network.c: WebSocket handshake failed\r\n");
-        return false;
+
+        LOG_INFO("task_network.c: WebSocket handshake status lines verified");
+
+        // Extrahieren des Sec-WebSocket-Accept aus der Server-Antwort
+        char *accept_ptr = strstr((char *)response, "Sec-WebSocket-Accept:");
+        if (accept_ptr) {
+            char server_accept[29]; // 28 Base64-Zeichen + Nullterminator
+            if (sscanf(accept_ptr, "Sec-WebSocket-Accept: %28s", server_accept) != 1) {
+                LOG_ERROR("task_network.c: Failed to parse Sec-WebSocket-Accept");
+                return false;
+            }
+
+            // Debug: Log der empfangenen Sec-WebSocket-Accept und seiner Länge
+            LOG_DEBUG("task_network.c: Received Sec-WebSocket-Accept: %s (Length: %lu)", server_accept, (unsigned long)strlen(server_accept));
+
+            // Berechnen von Sec-WebSocket-Accept
+            char concatenated[256];
+            snprintf(concatenated, sizeof(concatenated), "%s%s", sec_websocket_key, WEBSOCKET_GUID);
+
+            // Debug: Log des concatenated Strings
+            LOG_DEBUG("task_network.c: Concatenated string for SHA-1: %s", concatenated);
+
+            // SHA-1 Hash berechnen
+            uint8_t sha1_hash[20];
+            sha1((uint8_t *)concatenated, strlen(concatenated), sha1_hash);
+
+            // Debug: Log des SHA-1 Hashes in Hex
+            char sha1_hex[41];
+            for(int i = 0; i < 20; i++) {
+                sprintf(&sha1_hex[i*2], "%02x", sha1_hash[i]);
+            }
+            sha1_hex[40] = '\0';
+            LOG_DEBUG("task_network.c: SHA-1 Hash: %s", sha1_hex);
+
+            // Base64-kodieren des SHA-1 Hashes
+            char sec_websocket_accept_calculated[29]; // 20 Bytes -> 28 Base64-Zeichen + Nullterminator
+            size_t accept_length = base64_encode(sha1_hash, 20, sec_websocket_accept_calculated, sizeof(sec_websocket_accept_calculated) - 1);
+            sec_websocket_accept_calculated[accept_length] = '\0'; // Nullterminierung
+
+            // Debug: Log des berechneten Sec-WebSocket-Accept und seiner Länge
+            LOG_DEBUG("task_network.c: Calculated Sec-WebSocket-Accept: %s (Length: %lu)", sec_websocket_accept_calculated, (unsigned long)strlen(sec_websocket_accept_calculated));
+
+            // Vergleichen der berechneten und empfangenen Sec-WebSocket-Accept
+            if (strcmp(sec_websocket_accept_calculated, server_accept) == 0) {
+                LOG_INFO("task_network.c: Sec-WebSocket-Accept verified");
+                return true;
+            } else {
+                LOG_ERROR("task_network.c: Sec-WebSocket-Accept mismatch");
+                LOG_ERROR("task_network.c: Calculated: %s", sec_websocket_accept_calculated);
+                LOG_ERROR("task_network.c: Received:   %s", server_accept);
+                return false;
+            }
+        } else {
+            LOG_ERROR("task_network.c: Sec-WebSocket-Accept not found in response");
+            return false;
+        }
     }
+
+    // Fehlender Rückgabewert hinzugefügt
+    LOG_ERROR("task_network.c: WebSocket handshake failed - Missing required headers");
+    return false;
 }
 
-void process_websocket_messages(uint8_t sock)
-{
-    // Hier werden ausgehende Nachrichten verarbeitet
-    // Zum Beispiel Nachrichten aus einer Queue senden
+void process_websocket_messages(uint8_t sock) {
 
-    MessageForWebSocket msg;
+    MessageForWebSocket* msg;
 
     while (osMessageQueueGet(xWebSocketQueueHandle, &msg, NULL, 0) == osOK) {
+        LOG_DEBUG("process_websocket_messages: Retrieved message from queue");
+        // Nachricht verarbeiten
+        send_websocket_message(sock, msg);
 
-        printf("task_network.c: Folgende Nachricht wurde aus der Queue ausgelesen: message_type: %d, device: %d, target: %d, action: %d, value: %d\r\n",
-                msg.message_type, msg.device, msg.target, msg.action, msg.value);
-
-        printf("task_network.c: Weiterleiten an send_websocket_message \r\n");
-        send_websocket_message(sock, &msg);
+        // Nachricht freigeben
+        freeMessage(msg);
     }
 }
 
 void send_websocket_message(uint8_t sock, MessageForWebSocket *message)
 {
-    // Nachricht als JSON-String erstellen
-    char json_message[256];
+    LOG_INFO("send_websocket_message: Preparing to send WebSocket message");
 
-    snprintf(json_message, sizeof(json_message),
-             "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"target\":\"%s\",\"action\":\"%s\",\"value\":%u}",
-             uidStr,
-             message_type_to_string(message->message_type),
-             device_to_string(message->device),
-             target_to_string(message->target),
-             action_to_string(message->action),
-             message->value);
+    char json_message[512]; // Passen Sie die Größe entsprechend an
+    size_t message_len = 0; // Initialisiere message_len zu 0
 
-    size_t message_len = strlen(json_message);
 
-    size_t frame_size;
-    uint8_t *websocket_frame;
-
-    // Berechnen der Frame-Größe basierend auf der Nachrichtengröße
-    if (message_len <= 125) {
-        frame_size = message_len + 6; // 2 Byte Header + 4 Byte Masking Key
-    } else if (message_len <= 65535) {
-        frame_size = message_len + 8; // 4 Byte Extended Payload + 2 Byte Header + 4 Byte Masking Key
+    // Wenn `json_payload` gültige Daten enthält, diese verwenden
+    if (message->json_payload[0] != '\0') {
+        LOG_INFO("send_websocket_message: Using custom JSON payload");
+        strncpy(json_message, message->json_payload, sizeof(json_message) - 1);
+        json_message[sizeof(json_message) - 1] = '\0'; // Sicherheitshalber terminieren
+        message_len = strlen(json_message);
     } else {
-        printf("task_network.c: Message too long to be sent in a single WebSocket frame\r\n");
-        return;
+        // Bauen Sie die JSON-Nachricht basierend auf message_type, device, etc.
+    	const char *message_type_str = message->message_type;
+        const char *device_str = device_to_string(message->device);
+        const char *changed_value_str = target_to_string(message->target);
+
+        LOG_DEBUG("send_websocket_message: Message details - message_type: %s, device: %d (%s), value: %u",
+                  message_type_str, message->device, device_str, message->value);
+
+        snprintf(json_message, sizeof(json_message),
+                 "{\"UID\":\"%s\",\"message_type\":\"%s\",\"device\":\"%s\",\"changedValue\":\"%s\",\"value\":%u}",
+                 uidStr,
+                 message_type_str,
+                 device_str,
+                 changed_value_str,
+                 message->value);
+
+        message_len = strlen(json_message);
     }
 
-    // Speicher für den Frame allokieren
-    websocket_frame = (uint8_t *)malloc(frame_size);
-    if (websocket_frame == NULL) {
-        printf("task_network.c: Failed to allocate memory for WebSocket frame\r\n");
-        return;
-    }
+    LOG_DEBUG("send_websocket_message: json_message = %s", json_message);
+    LOG_DEBUG("send_websocket_message: JSON message length is %lu", (unsigned long)message_len);
 
-    // WebSocket-Frame-Header erstellen
-    websocket_frame[0] = 0x81; // FIN-Bit gesetzt, Text-Frame
 
-    size_t offset;
+
+    // Vorbereitung des WebSocket-Frames
+    size_t frame_size;
+    size_t offset = 0;
+
     if (message_len <= 125) {
-        websocket_frame[1] = 0x80 | message_len; // Mask-Bit gesetzt, Payload-Länge
-        offset = 2;
+        websocket_frame_buffer[offset++] = 0x81; // FIN bit gesetzt, Opcode = 0x1 (Text)
+        websocket_frame_buffer[offset++] = 0x80 | (uint8_t)message_len; // Maskenbit gesetzt, Payload-Länge
     } else if (message_len <= 65535) {
-        websocket_frame[1] = 0x80 | 126; // Mask-Bit gesetzt, Extended Payload-Länge
-        websocket_frame[2] = (message_len >> 8) & 0xFF;
-        websocket_frame[3] = message_len & 0xFF;
-        offset = 4;
+        websocket_frame_buffer[offset++] = 0x81; // FIN bit gesetzt, Opcode = 0x1 (Text)
+        websocket_frame_buffer[offset++] = 0x80 | 126; // Maskenbit gesetzt, Extended Payload-Länge folgt
+        websocket_frame_buffer[offset++] = (message_len >> 8) & 0xFF;
+        websocket_frame_buffer[offset++] = message_len & 0xFF;
+    } else {
+        LOG_ERROR("send_websocket_message: Message too long to be sent in a single WebSocket frame");
+        return;
     }
 
-    // Generiere Masking Key
+
+    // Masking Key generieren
     uint8_t masking_key[4];
     for (int i = 0; i < 4; i++) {
         masking_key[i] = rand() % 256;
     }
-    memcpy(&websocket_frame[offset], masking_key, 4);
+    memcpy(&websocket_frame_buffer[offset], masking_key, 4);
     offset += 4;
 
-    // Nachrichtenstruktur serialisieren und maskieren
+    // Maskiertes Payload
     for (size_t i = 0; i < message_len; i++) {
-        websocket_frame[offset + i] = json_message[i] ^ masking_key[i % 4];
+        websocket_frame_buffer[offset + i] = json_message[i] ^ masking_key[i % 4];
     }
+    offset += message_len;
 
-    printf("task_network.c: Sending WebSocket frame with length: %lu\r\n", (unsigned long)frame_size);
+    frame_size = offset;
 
-    // Sende den Frame und prüfe auf Fehler
+    LOG_INFO("send_websocket_message: Sending WebSocket frame with length: %lu", (unsigned long)frame_size);
+
+    // Senden des Frames über den Socket
     int32_t total_sent = 0;
     while (total_sent < frame_size) {
-        int32_t sent = send(sock, websocket_frame + total_sent, frame_size - total_sent);
+        int32_t sent = send(sock, websocket_frame_buffer + total_sent, frame_size - total_sent);
         if (sent < 0) {
-            printf("task_network.c: Failed to send WebSocket frame\r\n");
-            free(websocket_frame);
+            LOG_ERROR("send_websocket_message: Failed to send WebSocket frame");
             return;
         }
         total_sent += sent;
+        LOG_DEBUG("send_websocket_message: Sent %d bytes, total_sent = %d", sent, total_sent);
     }
 
-    printf("task_network.c: Sent following JSON message:\r\n");
-    printf("  JSON: %s\r\n", json_message);
-
-    // Speicher freigeben
-    free(websocket_frame);
+    LOG_INFO("send_websocket_message: Sent JSON message:\r\n  JSON: %s", json_message);
 }
 
 void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
 {
-	printf("task_network.c: Received data of size %ld bytes\r\n", (long int)size);
+    LOG_INFO("task_network.c: Received data of size %ld bytes", (long int)size);
 
-    /* Annahme: buf enthält die empfangenen WebSocket-Daten */
-
-    /* Parsing des WebSocket-Frames */
+    /* Parsing the WebSocket frame */
     uint8_t opcode = buf[0] & 0x0F;
     bool fin = (buf[0] & 0x80) != 0;
     bool mask = (buf[1] & 0x80) != 0;
@@ -353,15 +712,23 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
     uint8_t header_length = 2;
     uint8_t masking_key[4] = {0};
 
+
+
+    // Handle extended payload lengths (126 and 127)
     if (payload_length == 126) {
         payload_length = (buf[2] << 8) | buf[3];
         header_length += 2;
     } else if (payload_length == 127) {
-        payload_length = ((uint64_t)buf[2] << 56) | ((uint64_t)buf[3] << 48) |
-                         ((uint64_t)buf[4] << 40) | ((uint64_t)buf[5] << 32) |
-                         ((uint64_t)buf[6] << 24) | ((uint64_t)buf[7] << 16) |
-                         ((uint64_t)buf[8] << 8) | (uint64_t)buf[9];
+        payload_length = 0;
+        for (int i = 0; i < 8; i++) {
+            payload_length = (payload_length << 8) | buf[header_length + i];
+        }
         header_length += 8;
+    }
+
+    if (header_length + payload_length > size) {
+        LOG_ERROR("task_network.c: Payload length exceeds buffer size");
+        return;
     }
 
     if (mask) {
@@ -369,91 +736,259 @@ void process_received_websocket_data(uint8_t sock, uint8_t *buf, int32_t size)
         header_length += 4;
     }
 
-    printf("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %llu\r\n",
-           opcode, fin, mask, payload_length);
+    LOG_INFO("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %" PRIu64,
+             opcode, fin, mask, payload_length);
+    LOG_INFO("task_network.c: Opcode: %d, FIN: %d, Masked: %d, Payload length: %llu",
+             opcode, fin, mask, (unsigned long long)payload_length);
 
-    /* Unmasking des Payloads */
+    // Unmasking the payload if masked
     if (mask) {
         for (uint64_t i = 0; i < payload_length; i++) {
             buf[header_length + i] ^= masking_key[i % 4];
         }
     }
 
-    /* Sicherstellen, dass der Payload nullterminiert ist */
-    buf[header_length + payload_length] = '\0';
+    // Handle different opcodes
+    switch (opcode) {
+        case 0x1: // Text frame
+            // Ensure the payload is null-terminated
+            buf[header_length + payload_length] = '\0';
+            LOG_INFO("task_network.c: Text Payload: %s", &buf[header_length]);
+            process_received_data((char *)&buf[header_length]);
+            break;
 
-    printf("task_network.c: Payload: %s\r\n", &buf[header_length]);
+        case 0x8: // Connection Close frame
+            LOG_INFO("task_network.c: Received Connection Close frame");
+            close(sock);
+            // Set websocket_connected to 0 so that it will reconnect
+            websocket_connected = 0;
+            break;
 
-    /* Verarbeitung des Payloads */
-    process_received_data((char *)&buf[header_length]);
+        case 0x9: // Ping frame
+            LOG_INFO("task_network.c: Received Ping frame, sending Pong");
+            // Echo back the payload in a Pong frame
+            send_pong_frame(sock, &buf[header_length], payload_length);
+            break;
+
+        case 0xA: // Pong frame
+            LOG_INFO("task_network.c: Received Pong frame");
+            // Typically, no action needed
+            break;
+
+        default:
+            LOG_WARN("task_network.c: Received unknown opcode: %d", opcode);
+            break;
+    }
 }
 
 void process_received_data(const char *json_payload)
 {
-    printf("task_network.c: Processing received JSON data\r\n");
+    LOG_INFO("task_network.c: Processing received JSON data");
 
     cJSON *root = cJSON_Parse(json_payload);
     if (root == NULL) {
-        printf("task_network.c: JSON Parsing Error\r\n");
+        LOG_ERROR("task_network.c: JSON Parsing Error");
         return;
     }
 
     cJSON *message_type = cJSON_GetObjectItem(root, "message_type");
     if (message_type == NULL || !cJSON_IsString(message_type)) {
-        printf("task_network.c: No message_type found\r\n");
+        LOG_ERROR("task_network.c: No message_type found");
         cJSON_Delete(root);
         return;
     }
 
-    printf("task_network.c: Message type: %s\r\n", message_type->valuestring);
+    LOG_INFO("task_network.c: Message type: %s", message_type->valuestring);
 
     // Überprüfe die target_UUID
     cJSON *target_UUID = cJSON_GetObjectItem(root, "target_UUID");
     if (target_UUID == NULL || !cJSON_IsString(target_UUID)) {
-        printf("task_network.c: No target_UUID found\r\n");
+        LOG_ERROR("task_network.c: No target_UUID found");
         cJSON_Delete(root);
         return;
     }
 
-    // Vergleiche target_UUID mit der Seriennummer des Controllers
-    if (strcmp(target_UUID->valuestring, uidStr) != 0) {
-        printf("task_network.c: target_UUID does not match this controller's UID\r\n");
-        cJSON_Delete(root);
-        return;
-    }
-
-    // Aktuelle Zeit synchronisieren, falls vorhanden
-    cJSON *current_time = cJSON_GetObjectItem(root, "current_time");
-    if (current_time != NULL && cJSON_IsString(current_time)) {
-        printf("task_network.c: Synchronizing RTC with current_time: %s\r\n", current_time->valuestring);
-        synchronize_rtc(current_time->valuestring);
-    }
+		// Vergleiche target_UUID mit der Seriennummer des Controllers
+		if (strcmp(target_UUID->valuestring, uidStr) != 0) {
+			LOG_WARN("task_network.c: target_UUID does not match this controller's UID");
+			cJSON_Delete(root);
+			return;
+		}
 
 
-    if (strcmp(message_type->valuestring, "newGrowCycle") == 0) {
-        parse_new_grow_cycle(root);
-    } else if (strcmp(message_type->valuestring, "ControlCommand") == 0) {
-        parse_control_command(root);
-    } else {
-        printf("task_network.c: Unknown message_type: %s\r\n", message_type->valuestring);
-    }
+		if (strcmp(message_type->valuestring, "newGrowCycle") == 0) {
+			parse_new_grow_cycle(root);
+		} else if (strcmp(message_type->valuestring, "ControlCommand") == 0) {
+			LOG_INFO("task_network.c: Handling ControlCommand message");
+			parse_control_command(root);
+		} else if (strcmp(message_type->valuestring, "ControllerStateRequest") == 0) {
+			LOG_INFO("task_network.c: Handling ControllerStateRequest message");
+			send_controller_state();
+		} else if (strcmp(message_type->valuestring, "ManualModeRequest") == 0) {
+				LOG_INFO("task_network.c: Handling ManualModeRequest message");
+				send_manualMode_state();
+		} else if (strcmp(message_type->valuestring, "GrowCycleConfigRequest") == 0) {
+			LOG_INFO("task_network.c: Handling GrowCycleConfigRequest message");
+			send_grow_cycle_config();
+		} else if (strcmp(message_type->valuestring, "StatusRequest") == 0) {
+			LOG_INFO("task_network.c: Handling StatusRequest message");
+			handle_status_request(root);
+		} else if (strcmp(message_type->valuestring, "EraseEEPROM") == 0) {
+			LOG_INFO("task_network.c: Handling EraseEEPROM message");
+			handle_erase_eeprom_message();
+		} else if (strcmp(message_type->valuestring, "TimeSync") == 0) {
+			LOG_INFO("task_network.c: Handling TimeSync message");
+			handle_timesync_message(root);
+		} else {
+			LOG_WARN("task_network.c: Unknown message_type: %s", message_type->valuestring);
+		}
 
     cJSON_Delete(root);
 }
 
-void parse_control_command(cJSON *root)
-{
-    printf("task_network.c: Parsing ControlCommand\r\n");
+void handle_erase_eeprom_message(void) {
+    LOG_INFO("task_network.c: Handling EraseEEPROM message");
+
+    if (EEPROM_Erase()) {
+        LOG_INFO("task_network.c: EEPROM erased successfully");
+        LOG_INFO("task_network.c: Restarting Controller");
+        NVIC_SystemReset();
+    } else {
+        LOG_ERROR("task_network.c: Failed to erase EEPROM");
+    }
+}
+
+void handle_status_request(cJSON *root) {
+    LOG_INFO("task_network.c: Handling StatusRequest message");
 
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     if (payload == NULL) {
-        printf("task_network.c: No payload found in ControlCommand message\r\n");
+        LOG_ERROR("task_network.c: No payload found in StatusRequest message");
+        return;
+    }
+
+    cJSON *requested_data = cJSON_GetObjectItem(payload, "requested_data");
+
+    if (requested_data != NULL && cJSON_IsString(requested_data)) {
+
+    	if (strcmp(requested_data->valuestring, "GrowCycleConfig") == 0) {
+            // Sende GrowCycleConfig zurück
+            send_grow_cycle_config();
+        }
+    	else if (strcmp(requested_data->valuestring, "ControllerState") == 0) {
+            // Sende ControllerState zurück
+            send_controller_state();
+        }
+    	else if (strcmp(requested_data->valuestring, "ManualMode") == 0) {
+            // Sende ControllerState zurück
+    		send_manualMode_state();
+        }
+    	else {
+            LOG_WARN("task_network.c: Unknown requested_data: %s", requested_data->valuestring);
+        }
+    } else {
+        LOG_ERROR("task_network.c: requested_data not found or invalid in StatusRequest message");
+    }
+}
+
+void handle_timesync_message(cJSON *root) {
+    LOG_INFO("task_network.c: Handling TimeSync message");
+
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (payload == NULL) {
+        LOG_ERROR("task_network.c: No payload found in TimeSync message");
+        return;
+    }
+
+    cJSON *current_time = cJSON_GetObjectItem(payload, "current_time");
+    if (current_time != NULL && cJSON_IsString(current_time)) {
+        LOG_INFO("task_network.c: Synchronizing RTC with current_time: %s", current_time->valuestring);
+        synchronize_rtc(current_time->valuestring);
+    } else {
+        LOG_ERROR("task_network.c: current_time not found or invalid in TimeSync message");
+    }
+}
+
+void send_grow_cycle_config(void) {
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "message_type", MESSAGE_TYPE_GROWCYCLE_CONFIG);
+    cJSON_AddStringToObject(response, "UID", uidStr);
+
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddItemToObject(response, "payload", payload);
+
+    osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
+    // Konvertiere gGrowCycleConfig in JSON
+    cJSON *config_json = grow_cycle_config_to_json(&gGrowCycleConfig);
+    osMutexRelease(gGrowCycleConfigMutexHandle);
+
+    cJSON_AddItemToObject(payload, "GrowCycleConfig", config_json);
+
+    // Sende die Nachricht
+    char *json_string = cJSON_PrintUnformatted(response);
+    send_json_over_websocket(json_string);
+    cJSON_free(json_string);
+    cJSON_Delete(response);
+}
+
+void send_controller_state(void) {
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "message_type", MESSAGE_TYPE_CONTROLLER_STATE);
+    cJSON_AddStringToObject(response, "UID", uidStr);
+
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddItemToObject(response, "payload", payload);
+
+    osMutexAcquire(gControllerStateMutexHandle, osWaitForever);
+    // Konvertiere gControllerState in JSON
+    cJSON *state_json = controller_state_to_json(&gControllerState);
+    osMutexRelease(gControllerStateMutexHandle);
+
+    cJSON_AddItemToObject(payload, "ControllerState", state_json);
+
+    // Sende die Nachricht
+    char *json_string = cJSON_PrintUnformatted(response);
+    send_json_over_websocket(json_string);
+    cJSON_free(json_string);
+    cJSON_Delete(response);
+}
+
+void send_manualMode_state(void){
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "message_type", MESSAGE_TYPE_MANUALMODE_STATE);
+    cJSON_AddStringToObject(response, "UID", uidStr);
+
+    // Erstelle das Payload-Objekt und füge es zum Response hinzu
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddItemToObject(response, "payload", payload);
+
+    osMutexAcquire(gManualModeMutexHandle, osWaitForever);
+
+    // Füge den Wert von manualMode zum Payload hinzu
+    cJSON_AddBoolToObject(payload, "manualMode", manualMode);
+
+    osMutexRelease(gManualModeMutexHandle);
+
+    // Sende die Nachricht
+    char *json_string = cJSON_PrintUnformatted(response);
+    send_json_over_websocket(json_string);
+    cJSON_free(json_string);
+    cJSON_Delete(response);
+}
+
+void parse_control_command(cJSON *root)
+{
+    LOG_INFO("task_network.c: Parsing ControlCommand");
+
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (payload == NULL) {
+        LOG_ERROR("task_network.c: No payload found in ControlCommand message");
         return;
     }
 
     cJSON *commands = cJSON_GetObjectItem(payload, "commands");
     if (commands == NULL || !cJSON_IsArray(commands)) {
-        printf("task_network.c: No commands array found in payload\r\n");
+        LOG_ERROR("task_network.c: No commands array found in payload");
         return;
     }
 
@@ -466,43 +1001,43 @@ void parse_control_command(cJSON *root)
             cJSON *value = cJSON_GetObjectItem(command, "value");
 
             if (target && action && value && cJSON_IsString(target) && cJSON_IsString(action)) {
-                if (strcmp(target->valuestring, "light") == 0) {
+
+            	if (strcmp(target->valuestring, "light") == 0) {
                     handle_light_command(action->valuestring, value);
                 } else if (strcmp(target->valuestring, "pump") == 0) {
                     cJSON *deviceId = cJSON_GetObjectItem(command, "deviceId");
                     if (deviceId && cJSON_IsNumber(deviceId)) {
                         handle_pump_command(action->valuestring, deviceId->valueint, value);
                     } else {
-                        printf("task_network.c: pump command missing deviceId\r\n");
+                        LOG_ERROR("task_network.c: pump command missing deviceId");
                     }
                 } else if (strcmp(target->valuestring, "system") == 0) {
                     handle_system_command(action->valuestring, value);
                 } else if (strcmp(target->valuestring, "water") == 0) {
                     handle_water_command(action->valuestring, value);
                 } else {
-                    printf("task_network.c: Unknown target: %s\r\n", target->valuestring);
+                    LOG_WARN("task_network.c: Unknown target: %s", target->valuestring);
                 }
             } else {
-                printf("task_network.c: Invalid command format\r\n");
+                LOG_ERROR("task_network.c: Invalid command format");
             }
         }
     }
 }
 
-
 void parse_new_grow_cycle(cJSON *root)
 {
-    printf("task_network.c: Parsing new grow cycle configuration\r\n");
+    LOG_INFO("task_network.c: Parsing new grow cycle configuration");
 
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     if (payload == NULL) {
-        printf("task_network.c: No payload found in newGrowCycle message\r\n");
+        LOG_ERROR("task_network.c: No payload found in newGrowCycle message");
         return;
     }
 
     cJSON *value = cJSON_GetObjectItem(payload, "value");
     if (value == NULL) {
-        printf("task_network.c: No value found in payload\r\n");
+        LOG_ERROR("task_network.c: No value found in payload");
         return;
     }
 
@@ -512,21 +1047,11 @@ void parse_new_grow_cycle(cJSON *root)
     /* startGrowTime */
     cJSON *startGrowTime = cJSON_GetObjectItem(value, "startGrowTime");
     if (startGrowTime != NULL && cJSON_IsString(startGrowTime)) {
-        printf("task_network.c: startGrowTime: %s\r\n", startGrowTime->valuestring);
+        LOG_INFO("task_network.c: startGrowTime: %s", startGrowTime->valuestring);
         strncpy(newConfig.startGrowTime, startGrowTime->valuestring, sizeof(newConfig.startGrowTime));
     } else {
-        printf("task_network.c: startGrowTime not found or invalid\r\n");
+        LOG_ERROR("task_network.c: startGrowTime not found or invalid");
         return;
-    }
-
-    /* automaticMode */
-    cJSON *automaticMode = cJSON_GetObjectItem(value, "automaticMode");
-    if (automaticMode != NULL && cJSON_IsBool(automaticMode)) {
-        newConfig.automaticMode = cJSON_IsTrue(automaticMode);
-        printf("task_network.c: automaticMode: %s\r\n", newConfig.automaticMode ? "true" : "false");
-    } else {
-        printf("task_network.c: automaticMode not found or invalid, defaulting to false\r\n");
-        newConfig.automaticMode = false;
     }
 
     /* ledSchedules */
@@ -534,7 +1059,7 @@ void parse_new_grow_cycle(cJSON *root)
     if (ledSchedules != NULL && cJSON_IsArray(ledSchedules)) {
         parse_led_schedules(ledSchedules, &newConfig);
     } else {
-        printf("task_network.c: ledSchedules not found or invalid\r\n");
+        LOG_WARN("task_network.c: ledSchedules not found or invalid");
     }
 
     /* wateringSchedules */
@@ -542,52 +1067,52 @@ void parse_new_grow_cycle(cJSON *root)
     if (wateringSchedules != NULL && cJSON_IsArray(wateringSchedules)) {
         parse_watering_schedules(wateringSchedules, &newConfig);
     } else {
-        printf("task_network.c: wateringSchedules not found or invalid\r\n");
+        LOG_WARN("task_network.c: wateringSchedules not found or invalid");
     }
 
     // Gültigkeitsprüfung des GrowPlans
     uint32_t totalDuration = calculate_total_duration(&newConfig);
-    printf("task_network.c: totalDuration = %li\r\n", totalDuration);
+    LOG_INFO("task_network.c: totalDuration = %lu", (unsigned long)totalDuration);
 
     // Aktuelle Zeit holen
-    DS3231_Time currentTime;
-    if (!DS3231_GetTime(&currentTime)) {
-        printf("task_network.c: Failed to get current time from RTC\r\n");
+    struct tm currentTime;
+    if (!get_current_time(&currentTime)) {
+        LOG_ERROR("task_network.c: Failed to get current time from RTC");
         return;
     }
 
     // Startzeit parsen
     struct tm tm_start;
-    if (!parse_iso8601_datetime(newConfig.startGrowTime, &tm_start)) {
-        printf("task_network.c: Failed to parse startGrowTime\r\n");
+    const char *start_time_str = newConfig.startGrowTime;
+    if (!parse_iso8601_datetime(start_time_str, &tm_start)) {
+        LOG_ERROR("task_network.c:\tFailed to parse start time");
         return;
     }
 
+
     // Umwandlung in Zeitstempel
-    time_t startTimestamp = mktime(&tm_start);
-    time_t currentTimestamp = ds3231_time_to_timestamp(&currentTime);
+    time_t startTimestamp = tm_to_seconds(&tm_start);
+    time_t currentTimestamp = tm_to_seconds(&currentTime);
 
     // Prüfen, ob der GrowPlan abgelaufen ist
     if ((currentTimestamp - startTimestamp) > totalDuration) {
-        printf("task_network.c: GrowPlan has already expired, not saving configuration\r\n");
+        LOG_WARN("task_network.c: GrowPlan has already expired, not saving configuration");
         return;
     } else {
-    	printf("task_network.c: Grow is still valid\r\n");
+        LOG_INFO("task_network.c: Grow is still valid");
     }
-
-
 
     /* Speichern der neuen Konfiguration im EEPROM */
     if (save_grow_cycle_config(&newConfig)) {
-        printf("task_network.c: Grow cycle configuration saved successfully\r\n");
+        LOG_INFO("task_network.c: Grow cycle configuration saved successfully");
     } else {
-        printf("task_network.c: Failed to save grow cycle configuration\r\n");
+        LOG_ERROR("task_network.c: Failed to save grow cycle configuration");
     }
 }
 
 void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config)
 {
-    printf("task_network.c: Parsing LED schedules\r\n");
+    LOG_INFO("task_network.c: Parsing LED schedules");
 
     int scheduleCount = cJSON_GetArraySize(ledSchedules);
     for (int i = 0; i < scheduleCount && i < MAX_LED_SCHEDULES; i++) {
@@ -602,11 +1127,12 @@ void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config)
                 config->ledSchedules[i].durationOff = durationOff->valueint;
                 config->ledSchedules[i].repetition = repetition->valueint;
                 config->ledScheduleCount++;
-                printf("task_network.c: Added LED schedule %d: durationOn=%lu, durationOff=%lu, repetition=%d\r\n",
-                       i, (unsigned long)config->ledSchedules[i].durationOn, (unsigned long)config->ledSchedules[i].durationOff,
-                       config->ledSchedules[i].repetition);
+                LOG_INFO("task_network.c: Added LED schedule %d: durationOn=%lu, durationOff=%lu, repetition=%d",
+                         i, (unsigned long)config->ledSchedules[i].durationOn,
+                         (unsigned long)config->ledSchedules[i].durationOff,
+                         config->ledSchedules[i].repetition);
             } else {
-                printf("task_network.c: Incomplete ledSchedule data\r\n");
+                LOG_WARN("task_network.c: Incomplete ledSchedule data");
             }
         }
     }
@@ -614,7 +1140,7 @@ void parse_led_schedules(cJSON *ledSchedules, GrowCycleConfig *config)
 
 void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config)
 {
-    printf("task_network.c: Parsing watering schedules\r\n");
+    LOG_INFO("task_network.c: Parsing watering schedules");
 
     int scheduleCount = cJSON_GetArraySize(wateringSchedules);
     for (int i = 0; i < scheduleCount && i < MAX_WATERING_SCHEDULES; i++) {
@@ -630,35 +1156,15 @@ void parse_watering_schedules(cJSON *wateringSchedules, GrowCycleConfig *config)
                 config->wateringSchedules[i].duration_empty = duration_empty->valueint;
                 config->wateringSchedules[i].repetition = repetition->valueint;
                 config->wateringScheduleCount++;
-                printf("task_network.c: Added watering schedule %d: duration_full=%lu, duration_empty=%lu, repetition=%d\r\n",
-                       i, (unsigned long)config->wateringSchedules[i].duration_full, (unsigned long)config->wateringSchedules[i].duration_empty,
-                       config->wateringSchedules[i].repetition);
-
+                LOG_INFO("task_network.c: Added watering schedule %d: duration_full=%lu, duration_empty=%lu, repetition=%d",
+                         i, (unsigned long)config->wateringSchedules[i].duration_full,
+                         (unsigned long)config->wateringSchedules[i].duration_empty,
+                         config->wateringSchedules[i].repetition);
             } else {
-                printf("task_network.c: Incomplete wateringSchedule data\r\n");
+                LOG_WARN("task_network.c: Incomplete wateringSchedule data");
             }
         }
     }
-}
-
-bool parse_iso8601_datetime(const char *datetime_str, struct tm *tm_time)
-{
-    int year, month, day, hour, min, sec;
-    if (sscanf(datetime_str, "%4d-%2d-%2dT%2d:%2d:%2d",
-               &year, &month, &day, &hour, &min, &sec) != 6)
-    {
-        return false;
-    }
-
-    tm_time->tm_year = year - 1900; // `tm_year` ist die Anzahl der Jahre seit 1900
-    tm_time->tm_mon = month - 1;    // `tm_mon` ist 0-basiert (0 = Januar)
-    tm_time->tm_mday = day;
-    tm_time->tm_hour = hour;
-    tm_time->tm_min = min;
-    tm_time->tm_sec = sec;
-    tm_time->tm_isdst = -1; // Daylight Saving Time unbekannt
-
-    return true;
 }
 
 void synchronize_rtc(const char *iso8601_time)
@@ -667,7 +1173,7 @@ void synchronize_rtc(const char *iso8601_time)
     memset(&tm_time, 0, sizeof(struct tm));
 
     if (!parse_iso8601_datetime(iso8601_time, &tm_time)) {
-        printf("task_network.c: Failed to parse current_time\n");
+        LOG_ERROR("task_network.c: Failed to parse current_time");
         return;
     }
 
@@ -680,9 +1186,9 @@ void synchronize_rtc(const char *iso8601_time)
     newTime.seconds = tm_time.tm_sec;
 
     if (DS3231_SetTime(&newTime)) {
-        printf("task_network.c: RTC time updated successfully\r\n");
+        LOG_INFO("task_network.c: RTC time updated successfully");
     } else {
-        printf("task_network.c: Failed to update RTC time\r\n");
+        LOG_ERROR("task_network.c: Failed to update RTC time");
     }
 }
 
@@ -690,7 +1196,7 @@ void handle_water_command(const char *action, cJSON *value)
 {
     if (strcmp(action, "setState") == 0 && cJSON_IsString(value)) {
         const char *desiredState = value->valuestring;
-        printf("task_network.c: Forwarding water state command: %s\r\n", desiredState);
+        LOG_INFO("task_network.c: Forwarding water state command: %s", desiredState);
 
         // Sende den gewünschten Zustand an die Wassersteuerungs-Task
         WaterCommand waterCmd;
@@ -701,17 +1207,17 @@ void handle_water_command(const char *action, cJSON *value)
             waterCmd.commandType = WATER_COMMAND_SET_STATE;
             waterCmd.desiredState = WATER_STATE_EMPTY;
         } else {
-            printf("task_network.c: Unknown water state: %s\r\n", desiredState);
+            LOG_WARN("task_network.c: Unknown water state: %s", desiredState);
             return;
         }
 
         // Sende den Befehl über eine Message Queue
         if (osMessageQueuePut(xWaterCommandQueueHandle, &waterCmd, 0, 0) != osOK) {
-            printf("task_network.c: Failed to send water command to water controller\r\n");
+            LOG_ERROR("task_network.c: Failed to send water command to water controller");
         }
-        printf("task_network.c: finished send water command to water controller\r\n");
+        LOG_INFO("task_network.c: Finished sending water command to water controller");
     } else {
-        printf("task_network.c: Unknown action for water: %s\r\n", action);
+        LOG_WARN("task_network.c: Unknown action for water: %s", action);
     }
 }
 
@@ -719,7 +1225,7 @@ void handle_light_command(const char *action, cJSON *value)
 {
     if (strcmp(action, "setIntensity") == 0 && cJSON_IsNumber(value)) {
         uint8_t intensity = (uint8_t)value->valueint;
-        printf("task_network.c: Forwarding light intensity command: %d\r\n", intensity);
+        LOG_INFO("task_network.c: Forwarding light intensity command: %d", intensity);
 
         // Sende den gewünschten Intensitätswert an die Lichtsteuerungs-Task
         LightCommand lightCmd;
@@ -728,20 +1234,19 @@ void handle_light_command(const char *action, cJSON *value)
 
         // Sende den Befehl über eine Message Queue
         if (osMessageQueuePut(xLightCommandQueueHandle, &lightCmd, 0, 0) != osOK) {
-            printf("task_network.c: Failed to send light command to light controller\r\n");
+            LOG_ERROR("task_network.c: Failed to send light command to light controller");
         }
-        printf("task_network.c: Finished sending light command to light controller\r\n");
+        LOG_INFO("task_network.c: Finished sending light command to light controller");
     } else {
-        printf("task_network.c: Unknown action for light: %s\r\n", action);
+        LOG_WARN("task_network.c: Unknown action for light: %s", action);
     }
 }
-
 
 void handle_pump_command(const char *action, int deviceId, cJSON *value)
 {
     if (strcmp(action, "setState") == 0 && cJSON_IsBool(value)) {
         bool enable = cJSON_IsTrue(value);
-        printf("task_network.c: Setting pump %d state to %s\r\n", deviceId, enable ? "ON" : "OFF");
+        LOG_INFO("task_network.c: Setting pump %d state to %s", deviceId, enable ? "ON" : "OFF");
 
         // Aktualisiere den Controller-Zustand
         UpdatePumpState(enable, deviceId);
@@ -749,32 +1254,78 @@ void handle_pump_command(const char *action, int deviceId, cJSON *value)
         // Sende Befehl an Hardware-Task
         ControlPump(enable, deviceId);
     } else {
-        printf("task_network.c: Unknown action for pump: %s\r\n", action);
+        LOG_WARN("task_network.c: Unknown action for pump: %s", action);
     }
 }
-
 
 void handle_system_command(const char *action, cJSON *value)
 {
-    if (strcmp(action, "setAutomaticMode") == 0 && cJSON_IsBool(value)) {
-        bool automaticMode = cJSON_IsTrue(value);
-        printf("task_network.c: Setting automatic mode to %s\r\n", automaticMode ? "ON" : "OFF");
+   if (strcmp(action, "setManualMode") == 0 && cJSON_IsBool(value)) {
+        bool newManualMode = cJSON_IsTrue(value);
+        LOG_INFO("task_network.c: Setting manual mode to %s", newManualMode ? "ON" : "OFF");
 
-        // Aktualisiere die globale Konfiguration
-        osMutexAcquire(gGrowCycleConfigMutexHandle, osWaitForever);
-        gGrowCycleConfig.automaticMode = automaticMode;
-        osMutexRelease(gGrowCycleConfigMutexHandle);
+        // Aktualisiere den globalen Wert
+        osMutexAcquire(gManualModeMutexHandle, osWaitForever);
+        manualMode = newManualMode;
+        osMutexRelease(gManualModeMutexHandle);
 
         // Speichere nur den automaticMode im EEPROM
-        save_automatic_mode(automaticMode);
-
-        // Event-Flag setzen, um die Controller-Tasks zu benachrichtigen
-        osEventFlagsSet(gControllerEventGroupHandle, NEW_GROW_CYCLE_CONFIG_AVAILABLE);
+        if (!save_manual_mode(manualMode)) {
+            LOG_ERROR("task_network.c: Failed to save manual mode");
+        }
     } else {
-        printf("task_network.c: Unknown action for system: %s\r\n", action);
+        LOG_WARN("task_network.c: Unknown action for system: %s", action);
     }
 }
 
+bool save_manual_mode(bool manualMode) {
+osMutexAcquire(gEepromMutexHandle, osWaitForever);
+uint16_t address = EEPROM_MANUAL_MODE_ADDR;
+printf("task_state_manager.c: Saving manualMode to EEPROM at address 0x%04X\r\n", address);
+
+if (!EEPROM_Write(address, (uint8_t *)&manualMode, sizeof(bool))) {
+	printf("task_state_manager.c: Failed to write manualMode to EEPROM\r\n");
+	osMutexRelease(gEepromMutexHandle);
+	return false;
+}
+
+// **Neu hinzugefügt: Lesen des gespeicherten Werts zur Validierung**
+bool readBackManualMode;
+if (!EEPROM_Read(address, (uint8_t *)&readBackManualMode, sizeof(bool))) {
+	printf("task_state_manager.c: Failed to read back manualMode from EEPROM\r\n");
+	osMutexRelease(gEepromMutexHandle);
+	return false;
+}
+
+if (readBackManualMode != manualMode) {
+	printf("task_state_manager.c: Read back manualMode does not match saved value\r\n");
+	osMutexRelease(gEepromMutexHandle);
+	return false;
+} else {
+	printf("task_state_manager.c: Verified that manualMode was saved correctly\r\n");
+}
+
+osMutexRelease(gEepromMutexHandle);
+
+printf("task_state_manager.c: manualMode saved and verified successfully\r\n");
+return true;
+}
+
+bool load_manual_mode(bool *manualMode) {
+    uint16_t address = EEPROM_MANUAL_MODE_ADDR;
+    LOG_INFO("state_manager.c: Loading manualMode from EEPROM at address 0x%04X\r\n", address);
+
+    osMutexAcquire(gEepromMutexHandle, osWaitForever);
+    if (!EEPROM_Read(address, (uint8_t *)manualMode, sizeof(bool))) {
+        printf("task_state_manager.c: Failed to read manualMode from EEPROM\r\n");
+        osMutexRelease(gEepromMutexHandle);
+        return false;
+    }
+    osMutexRelease(gEepromMutexHandle);
+
+    LOG_INFO("state_manager.c: manualMode loaded successfully\r\n");
+    return true;
+}
 
 uint32_t calculate_total_duration(GrowCycleConfig *config) {
     uint32_t totalDuration = 0;
@@ -788,3 +1339,91 @@ uint32_t calculate_total_duration(GrowCycleConfig *config) {
     // ...
     return totalDuration; // Dauer in Sekunden
 }
+
+cJSON *grow_cycle_config_to_json(GrowCycleConfig *config) {
+    cJSON *config_json = cJSON_CreateObject();
+
+    if (config_json == NULL) {
+        LOG_ERROR("grow_cycle_config_to_json: Failed to create JSON object");
+        return NULL;
+    }
+
+    cJSON_AddStringToObject(config_json, "startGrowTime", config->startGrowTime);
+
+    cJSON *ledSchedules = cJSON_CreateArray();
+    for (uint8_t i = 0; i < config->ledScheduleCount; i++) {
+        cJSON *schedule = cJSON_CreateObject();
+        cJSON_AddNumberToObject(schedule, "durationOn", config->ledSchedules[i].durationOn);
+        cJSON_AddNumberToObject(schedule, "durationOff", config->ledSchedules[i].durationOff);
+        cJSON_AddNumberToObject(schedule, "repetition", config->ledSchedules[i].repetition);
+        cJSON_AddItemToArray(ledSchedules, schedule);
+    }
+    cJSON_AddItemToObject(config_json, "ledSchedules", ledSchedules);
+
+    cJSON *wateringSchedules = cJSON_CreateArray();
+    for (uint8_t i = 0; i < config->wateringScheduleCount; i++) {
+        cJSON *schedule = cJSON_CreateObject();
+        cJSON_AddNumberToObject(schedule, "duration_full", config->wateringSchedules[i].duration_full);
+        cJSON_AddNumberToObject(schedule, "duration_empty", config->wateringSchedules[i].duration_empty);
+        cJSON_AddNumberToObject(schedule, "repetition", config->wateringSchedules[i].repetition);
+        cJSON_AddItemToArray(wateringSchedules, schedule);
+    }
+    cJSON_AddItemToObject(config_json, "wateringSchedules", wateringSchedules);
+
+    return config_json;
+}
+
+cJSON *controller_state_to_json(ControllerState *state) {
+    cJSON *state_json = cJSON_CreateObject();
+    if (!state_json) return NULL;
+
+    cJSON_AddBoolToObject(state_json, "wasserbeckenZustand", state->wasserbeckenZustand);
+    cJSON_AddBoolToObject(state_json, "pumpeZulauf", state->pumpeZulauf);
+    cJSON_AddBoolToObject(state_json, "pumpeAblauf", state->pumpeAblauf);
+    cJSON_AddBoolToObject(state_json, "sensorOben", state->sensorOben);
+    cJSON_AddBoolToObject(state_json, "sensorUnten", state->sensorUnten);
+    cJSON_AddNumberToObject(state_json, "lightIntensity", state->lightIntensity);
+
+    return state_json;
+}
+
+void send_json_over_websocket(const char *json_string) {
+    // Nachricht aus dem Nachrichtenpool zuweisen
+    MessageForWebSocket* msg = allocateMessage();
+    if (msg == NULL) {
+        LOG_ERROR("task_network.c: Failed to allocate message for send_json_over_websocket");
+        return;
+    }
+
+    // Nachricht initialisieren
+    msg->message_type = MESSAGE_TYPE_STATUS_RESPONSE;
+    strncpy(msg->json_payload, json_string, sizeof(msg->json_payload) - 1);
+    msg->json_payload[sizeof(msg->json_payload) - 1] = '\0'; // Sicherheitshalber terminieren
+
+    // Nachricht zur WebSocket-Queue hinzufügen
+    if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
+        LOG_ERROR("task_network.c: Failed to send JSON over WebSocket");
+        freeMessage(msg); // Nachricht freigeben, falls das Hinzufügen fehlschlägt
+    } else {
+        LOG_INFO("task_network.c: JSON message added to WebSocketQueue");
+    }
+}
+
+void send_ping_frame(uint8_t sock) {
+
+    uint8_t masking_key[4];
+    // Generiere einen zufälligen Masking Key
+    for (int i = 0; i < 4; i++) {
+        masking_key[i] = rand() % 256;
+    }
+
+    uint8_t ping_frame[6]; // 2 Byte Header + 4 Byte Masking Key
+    ping_frame[0] = 0x89; // FIN bit gesetzt, Opcode für Ping ist 0x9
+    ping_frame[1] = 0x80 | 0x00; // Maskenbit gesetzt, Payload-Länge = 0
+
+    memcpy(&ping_frame[2], masking_key, 4); // Masking Key hinzufügen
+
+    send(sock, ping_frame, 6);
+    LOG_INFO("send_ping_frame: Sent Ping frame");
+}
+

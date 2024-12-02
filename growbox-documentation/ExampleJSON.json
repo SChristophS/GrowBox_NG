@@ -1,5 +1,45 @@
 {
     "target_UUID": "003B001C3439471839303732",
+	"device":       "frontend",
+    "message_type": "newGrowCycle",
+    "payload": {
+        "target": "growCycle",
+        "action": "newGrowCycle",
+        "value": {
+            "startGrowTime": "2024-11-26T11:32:00",
+            "ledSchedules": [
+                {
+                    "durationOn": 4,
+                    "durationOff": 1,
+                    "repetition": 12
+                },
+                {
+                    "durationOn": 1,
+                    "durationOff": 1,
+                    "repetition": 30
+                }
+            ],
+            "wateringSchedules": [
+                {
+                    "duration_full": 4,
+                    "duration_empty": 1,
+                    "repetition": 12
+                },
+                {
+                    "duration_full": 4,
+                    "duration_empty": 1,
+                    "repetition": 12
+                }
+            ]
+        }
+    }
+}
+
+
+
+
+{
+    "target_UUID": "003B001C3439471839303732",
     "current_time": "2024-12-31T23:59:59",
 	"device":       "frontend",
     "message_type": "newGrowCycle",
@@ -10,24 +50,24 @@
             "startGrowTime": "2024-12-31T23:59:59",
             "ledSchedules": [
                 {
-                    "durationOn": 0,
-                    "durationOff": 1000,
-                    "repetition": 25
+                    "durationOn": 5,
+                    "durationOff": 5,
+                    "repetition": 2
                 },
                 {
-                    "durationOn": 0,
-                    "durationOff": 1000,
-                    "repetition": 50
+                    "durationOn": 1,
+                    "durationOff": 100,
+                    "repetition": 10000
                 }
             ],
             "wateringSchedules": [
                 {
-                    "duration_full": 500,
+                    "duration_full": 0,
                     "duration_empty": 500,
                     "repetition": 25
                 },
                 {
-                    "duration_full": 500,
+                    "duration_full": 0,
                     "duration_empty": 500,
                     "repetition": 50
                 }
@@ -36,7 +76,35 @@
     }
 }
 
+{
+    "target_UUID": "003B001C3439471839303732",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "system",
+                "action": "setManualMode",
+                "value": true
+            }
+        ]
+    }
+}
 
+{
+    "target_UUID": "003B001C3439471839303732",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "light",
+                "action": "setIntensity",
+                "value": 50
+            }
+        ]
+    }
+}
 
 {
     "target_UUID": "003B001C3439471839303732",
@@ -58,17 +126,49 @@
             },
             {
                 "target": "system",
-                "action": "setAutomaticMode",
+                "action": "setManualOverride",
                 "value": true
             }
         ]
     }
 }
 
+{
+    "target_UUID": "003B001C3439471839303732",
+    "device": "frontend",
+    "message_type": "EraseEEPROM"
+}
 
 {
     "target_UUID": "003B001C3439471839303732",
-    "current_time": "2024-12-31T23:59:59",
+    "device": "frontend",
+    "message_type": "TimeSync",
+    "payload": {
+        "current_time": "2024-12-31T23:59:59"
+    }
+}
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "device": "frontend",
+    "message_type": "ControllerStateRequest"
+}
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "device": "frontend",
+    "message_type": "AutomaticModeRequest"
+}
+
+{
+    "target_UUID": "003B001C3439471839303732",
+    "device": "frontend",
+    "message_type": "GrowCycleConfigRequest"
+}
+
+
+{
+    "target_UUID": "003B001C3439471839303732",
     "device": "frontend",
     "message_type": "ControlCommand",
     "payload": {
@@ -76,7 +176,7 @@
             {
                 "target": "system",
                 "action": "setAutomaticMode",
-                "value": true
+                "value": false
             }
         ]
     }
@@ -84,7 +184,6 @@
 
 {
     "target_UUID": "003B001C3439471839303732",
-    "current_time": "2024-12-31T23:59:59",
     "device": "frontend",
     "message_type": "ControlCommand",
     "payload": {
@@ -100,7 +199,6 @@
 
 {
     "target_UUID": "003B001C3439471839303732",
-    "current_time": "2024-12-31T23:59:59",
     "device": "frontend",
     "message_type": "ControlCommand",
     "payload": {
@@ -113,3 +211,4 @@
         ]
     }
 }
+

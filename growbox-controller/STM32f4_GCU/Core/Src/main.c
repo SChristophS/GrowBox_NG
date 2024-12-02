@@ -22,9 +22,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stm32f4xx_hal.h"
 #include <stdio.h>
 #include <string.h>
-#include "stm32f4xx_hal.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include "socket.h"
@@ -32,10 +32,14 @@
 #include "math.h"
 
 /* other */
+#include "globals.h"
+
 #include "controller_state.h"
+#include "state_manager.h"
 #include "uart_redirect.h"
 #include "wizchip_init.h"
-
+#include "logger.h"
+#include "helper_websocket.h"
 
 /* Tasks */
 #include "task_alive.h"
@@ -43,11 +47,9 @@
 #include "task_light_controller.h"
 #include "task_network.h"
 #include "task_sensor.h"
-#include "task_state_manager.h"
-//#include "task_watcher.h"
 #include "task_water_controller.h"
 
-#include "globals.h"
+
 
 /* USER CODE END Includes */
 
@@ -87,7 +89,7 @@ UART_HandleTypeDef huart2;
 
 /* Definitions for AliveTask */
 osThreadId_t AliveTaskHandle;
-uint32_t AliveTaskBuffer[ 128 ];
+uint32_t AliveTaskBuffer[ 512 ];
 osStaticThreadDef_t AliveTaskControlBlock;
 const osThreadAttr_t AliveTask_attributes = {
   .name = "AliveTask",
@@ -101,12 +103,12 @@ const osThreadAttr_t AliveTask_attributes = {
 osThreadId_t NetworkTaskHandle;
 const osThreadAttr_t NetworkTask_attributes = {
   .name = "NetworkTask",
-  .stack_size = 1024 * 4,
+  .stack_size = 3000 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for WaterController */
 osThreadId_t WaterControllerHandle;
-uint32_t WaterControllerBuffer[ 512 ];
+uint32_t WaterControllerBuffer[ 1024 ];
 osStaticThreadDef_t WaterControllerControlBlock;
 const osThreadAttr_t WaterController_attributes = {
   .name = "WaterController",
@@ -118,7 +120,7 @@ const osThreadAttr_t WaterController_attributes = {
 };
 /* Definitions for LightTask */
 osThreadId_t LightTaskHandle;
-uint32_t LightTaskBuffer[ 512 ];
+uint32_t LightTaskBuffer[ 1024 ];
 osStaticThreadDef_t LightTaskControlBlock;
 const osThreadAttr_t LightTask_attributes = {
   .name = "LightTask",
@@ -130,7 +132,7 @@ const osThreadAttr_t LightTask_attributes = {
 };
 /* Definitions for SensorTask */
 osThreadId_t SensorTaskHandle;
-uint32_t SensorTaskBuffer[ 256 ];
+uint32_t SensorTaskBuffer[ 512 ];
 osStaticThreadDef_t SensorTaskControlBlock;
 const osThreadAttr_t SensorTask_attributes = {
   .name = "SensorTask",
@@ -176,12 +178,19 @@ const osMessageQueueAttr_t xLightControllerQueue_attributes = {
 };
 /* Definitions for xWebSocketQueue */
 osMessageQueueId_t xWebSocketQueueHandle;
+//uint8_t xWebSocketQueueBuffer[ 3 * 6 ];
+MessageForWebSocket* xWebSocketQueueBuffer[ 3 ];
+osStaticMessageQDef_t xWebSocketQueueControlBlock;
 const osMessageQueueAttr_t xWebSocketQueue_attributes = {
-  .name = "xWebSocketQueue"
+  .name = "xWebSocketQueue",
+  .cb_mem = &xWebSocketQueueControlBlock,
+  .cb_size = sizeof(xWebSocketQueueControlBlock),
+  .mq_mem = &xWebSocketQueueBuffer,
+  .mq_size = sizeof(xWebSocketQueueBuffer)
 };
 /* Definitions for xHardwareQueue */
 osMessageQueueId_t xHardwareQueueHandle;
-uint8_t xHardwareQueueBuffer[ 1 * 4 ];
+uint8_t xHardwareQueueBuffer[ 2 * 8 ];
 osStaticMessageQDef_t xHardwareQueueControlBlock;
 const osMessageQueueAttr_t xHardwareQueue_attributes = {
   .name = "xHardwareQueue",
@@ -228,6 +237,62 @@ const osMutexAttr_t gGrowCycleConfigMutex_attributes = {
   .cb_mem = &gGrowCycleConfigMutexControlBlock,
   .cb_size = sizeof(gGrowCycleConfigMutexControlBlock),
 };
+/* Definitions for gEepromMutex */
+osMutexId_t gEepromMutexHandle;
+osStaticMutexDef_t gEepromMutexControlBlock;
+const osMutexAttr_t gEepromMutex_attributes = {
+  .name = "gEepromMutex",
+  .cb_mem = &gEepromMutexControlBlock,
+  .cb_size = sizeof(gEepromMutexControlBlock),
+};
+/* Definitions for gLoggerMutex */
+osMutexId_t gLoggerMutexHandle;
+osStaticMutexDef_t gLoggerMutexControlBlock;
+const osMutexAttr_t gLoggerMutex_attributes = {
+  .name = "gLoggerMutex",
+  .cb_mem = &gLoggerMutexControlBlock,
+  .cb_size = sizeof(gLoggerMutexControlBlock),
+};
+/* Definitions for gConfigAvailableMutex */
+osMutexId_t gConfigAvailableMutexHandle;
+osStaticMutexDef_t gConfigAvailableMutexControlBlock;
+const osMutexAttr_t gConfigAvailableMutex_attributes = {
+  .name = "gConfigAvailableMutex",
+  .cb_mem = &gConfigAvailableMutexControlBlock,
+  .cb_size = sizeof(gConfigAvailableMutexControlBlock),
+};
+/* Definitions for gStartTimeMutex */
+osMutexId_t gStartTimeMutexHandle;
+osStaticMutexDef_t gStartTimeMutexControlBlock;
+const osMutexAttr_t gStartTimeMutex_attributes = {
+  .name = "gStartTimeMutex",
+  .cb_mem = &gStartTimeMutexControlBlock,
+  .cb_size = sizeof(gStartTimeMutexControlBlock),
+};
+/* Definitions for gMessagePoolMutex */
+osMutexId_t gMessagePoolMutexHandle;
+osStaticMutexDef_t gMessagePoolMutexControlBlock;
+const osMutexAttr_t gMessagePoolMutex_attributes = {
+  .name = "gMessagePoolMutex",
+  .cb_mem = &gMessagePoolMutexControlBlock,
+  .cb_size = sizeof(gMessagePoolMutexControlBlock),
+};
+/* Definitions for gHeartbeatMutex */
+osMutexId_t gHeartbeatMutexHandle;
+osStaticMutexDef_t gHeartbeatMutexControlBlock;
+const osMutexAttr_t gHeartbeatMutex_attributes = {
+  .name = "gHeartbeatMutex",
+  .cb_mem = &gHeartbeatMutexControlBlock,
+  .cb_size = sizeof(gHeartbeatMutexControlBlock),
+};
+/* Definitions for gManualModeMutex */
+osMutexId_t gManualModeMutexHandle;
+osStaticMutexDef_t gManualModeMutexControlBlock;
+const osMutexAttr_t gManualModeMutex_attributes = {
+  .name = "gManualModeMutex",
+  .cb_mem = &gManualModeMutexControlBlock,
+  .cb_size = sizeof(gManualModeMutexControlBlock),
+};
 /* Definitions for gControllerEventGroup */
 osEventFlagsId_t gControllerEventGroupHandle;
 osStaticEventGroupDef_t gControllerEventGroupControlBlock;
@@ -236,24 +301,36 @@ const osEventFlagsAttr_t gControllerEventGroup_attributes = {
   .cb_mem = &gControllerEventGroupControlBlock,
   .cb_size = sizeof(gControllerEventGroupControlBlock),
 };
+/* Definitions for INITIALIZATION_COMPLETE */
+osEventFlagsId_t INITIALIZATION_COMPLETEHandle;
+osStaticEventGroupDef_t INITIALIZATION_COMPLETEControlBlock;
+const osEventFlagsAttr_t INITIALIZATION_COMPLETE_attributes = {
+  .name = "INITIALIZATION_COMPLETE",
+  .cb_mem = &INITIALIZATION_COMPLETEControlBlock,
+  .cb_size = sizeof(INITIALIZATION_COMPLETEControlBlock),
+};
 /* USER CODE BEGIN PV */
 
-// Definiere hier deine globalen Variablen
+// globale Variablen
 ControllerState gControllerState;
 GrowCycleConfig gGrowCycleConfig;
-
 char uidStr[25];
+bool gConfigAvailable;
+struct tm gStartTimeTm;
+bool gTimeSynchronized;
+bool is_registered = false;
 
-// Mutexe und Event-Gruppen
-osMutexId_t gControllerStateMutexHandle;
-osMutexId_t gGrowCycleConfigMutexHandle;
-osEventFlagsId_t gControllerEventGroupHandle;
 
-// Queues
-osMessageQueueId_t xWaterControllerQueueHandle;
-osMessageQueueId_t xLightControllerQueueHandle;
-osMessageQueueId_t xWebSocketQueueHandle;
-osMessageQueueId_t xHardwareQueueHandle;
+bool manualMode = false;
+
+/* Definitions for xWebSocketQueue */
+#define MESSAGE_POINTER_SIZE sizeof(MessageForWebSocket*)
+
+
+// Heartbeat-Daten (definiert global)
+TaskHeartbeat task_heartbeats[MAX_MONITORED_TASKS];
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -287,12 +364,13 @@ void GetSTM32UID(char *uidStr) {
     uid[2] = *(uint32_t *)0x1FFF7A18;
 
     if (sprintf(uidStr, "%08lX%08lX%08lX", uid[0], uid[1], uid[2]) < 0) {
-        printf("task_network.c:\t - Error formatting UID string\r\n");
+        LOG_INFO("main.c:\t - Error formatting UID string");
         return;
     }
+
+    LOG_INFO("main.c:\t STM32 UID ausgelesen und gespeichert: %s", uidStr);
+
 }
-
-
 
 
 
@@ -336,12 +414,19 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("main.c:\t - NextGeneration Growbox Project - \r\n");
+  LOG_INFO("main.c:\t NextGeneration Growbox Project");
+
+
 
   resetAssert();
   HAL_Delay(300);
   resetDeassert();
   HAL_Delay(300);
+
+  // Initialisieren des Nachrichtenpools und des zugehörigen Mutexes
+  initialize_message_pool();
+
+
 
 
   // Initialisiere gControllerState
@@ -351,25 +436,9 @@ int main(void)
   gControllerState.sensorOben = false;
   gControllerState.sensorUnten = false;
   gControllerState.lightIntensity = 0;
-  gControllerState.automaticMode = false;
-
-
-
-
-
-  printf("main.c:\t - done\r\n");
-
 
 
   GetSTM32UID(uidStr);
-  printf("main.c:\t STM32 UID ausgelesen und gespeichert: %s\r\n", uidStr);
-
-  //
-  printf("Size of MessageForWebSocket: %lu bytes\n", (unsigned long)sizeof(MessageForWebSocket));
-
-
-
-
 
 
 
@@ -383,6 +452,27 @@ int main(void)
 
   /* creation of gGrowCycleConfigMutex */
   gGrowCycleConfigMutexHandle = osMutexNew(&gGrowCycleConfigMutex_attributes);
+
+  /* creation of gEepromMutex */
+  gEepromMutexHandle = osMutexNew(&gEepromMutex_attributes);
+
+  /* creation of gLoggerMutex */
+  gLoggerMutexHandle = osMutexNew(&gLoggerMutex_attributes);
+
+  /* creation of gConfigAvailableMutex */
+  gConfigAvailableMutexHandle = osMutexNew(&gConfigAvailableMutex_attributes);
+
+  /* creation of gStartTimeMutex */
+  gStartTimeMutexHandle = osMutexNew(&gStartTimeMutex_attributes);
+
+  /* creation of gMessagePoolMutex */
+  gMessagePoolMutexHandle = osMutexNew(&gMessagePoolMutex_attributes);
+
+  /* creation of gHeartbeatMutex */
+  gHeartbeatMutexHandle = osMutexNew(&gHeartbeatMutex_attributes);
+
+  /* creation of gManualModeMutex */
+  gManualModeMutexHandle = osMutexNew(&gManualModeMutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -404,10 +494,10 @@ int main(void)
   xLightControllerQueueHandle = osMessageQueueNew (1, sizeof(uint8_t), &xLightControllerQueue_attributes);
 
   /* creation of xWebSocketQueue */
-  xWebSocketQueueHandle = osMessageQueueNew (1, 6, &xWebSocketQueue_attributes);
+  xWebSocketQueueHandle = osMessageQueueNew (3, sizeof(MessageForWebSocket*), &xWebSocketQueue_attributes);
 
   /* creation of xHardwareQueue */
-  xHardwareQueueHandle = osMessageQueueNew (1, 4, &xHardwareQueue_attributes);
+  xHardwareQueueHandle = osMessageQueueNew (2, 8, &xHardwareQueue_attributes);
 
   /* creation of xWaterCommandQueue */
   xWaterCommandQueueHandle = osMessageQueueNew (3, 4, &xWaterCommandQueue_attributes);
@@ -464,9 +554,12 @@ int main(void)
   /* creation of gControllerEventGroup */
   gControllerEventGroupHandle = osEventFlagsNew(&gControllerEventGroup_attributes);
 
+  /* creation of INITIALIZATION_COMPLETE */
+  INITIALIZATION_COMPLETEHandle = osEventFlagsNew(&INITIALIZATION_COMPLETE_attributes);
+
   /* USER CODE BEGIN RTOS_EVENTS */
 
-  printf("main.c:\t - check if all Tasks are created correctly...");
+  LOG_INFO("main.c:\t - check if all Tasks are created correctly...");
   // check if all Tasks are created correctly
   if (AliveTaskHandle == NULL) {
 	printf("main.c:\t - Error: Failed to create AliveTask\r\n");
@@ -498,9 +591,23 @@ int main(void)
     Error_Handler();
   }
 
+  LOG_INFO("main.c:\t check done");
+
+
+
+  /* Überprüfen Sie, ob die Mutexe erfolgreich erstellt wurden */
+  if (gControllerStateMutexHandle == NULL ||
+      gGrowCycleConfigMutexHandle == NULL ||
+      gEepromMutexHandle == NULL) {
+      printf("main.c:\t Error: Failed to create one or more mutexes\r\n");
+      Error_Handler();
+  }
+
+  LOG_INFO("main.c:\t calling InitializeGrowCycleConfig");
+  InitializeGrowCycleConfig();
+
+
   printf("main.c:\t - done\r\n");
-
-
   /* add events, ... */
 
   /* USER CODE END RTOS_EVENTS */
@@ -942,6 +1049,43 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+// Funktion zur Initialisierung der Heartbeat-Daten
+void InitializeTaskHeartbeats(void) {
+    osMutexAcquire(gHeartbeatMutexHandle, osWaitForever);
+    for (int i = 0; i < MAX_MONITORED_TASKS; i++) {
+        task_heartbeats[i].task_name = NULL;
+        task_heartbeats[i].last_heartbeat = 0;
+    }
+    osMutexRelease(gHeartbeatMutexHandle);
+}
+
+// Funktion zur Registrierung einer Task
+bool RegisterTaskHeartbeat(const char *task_name) {
+    bool registered = false;
+    osMutexAcquire(gHeartbeatMutexHandle, osWaitForever);
+    for (int i = 0; i < MAX_MONITORED_TASKS; i++) {
+        if (task_heartbeats[i].task_name == NULL) {
+            task_heartbeats[i].task_name = task_name;
+            task_heartbeats[i].last_heartbeat = HAL_GetTick();
+            registered = true;
+            break;
+        }
+    }
+    osMutexRelease(gHeartbeatMutexHandle);
+    return registered;
+}
+
+// Funktion zur Aktualisierung des Heartbeats einer Task
+void UpdateTaskHeartbeat(const char *task_name) {
+    osMutexAcquire(gHeartbeatMutexHandle, osWaitForever);
+    for (int i = 0; i < MAX_MONITORED_TASKS; i++) {
+        if (task_heartbeats[i].task_name != NULL && strcmp(task_heartbeats[i].task_name, task_name) == 0) {
+            task_heartbeats[i].last_heartbeat = HAL_GetTick();
+            break;
+        }
+    }
+    osMutexRelease(gHeartbeatMutexHandle);
+}
 /* USER CODE END 4 */
 
 /**

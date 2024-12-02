@@ -1,75 +1,223 @@
-/*
- * helper_websocket.c
- *
- *  Created on: Jul 29, 2024
- *      Author: chris
- */
-
+/* helper_websocket.c */
 #include "cmsis_os.h"
 #include <stdio.h>
 #include "task_network.h"
 #include "controller_state.h"
 #include "uart_redirect.h"
-#include <stdio.h>
 #include <string.h>
-#include "task_network.h"
 #include "globals.h"
+#include "helper_websocket.h"
+#include "logger.h"
 
+MessagePoolItem messagePool[MESSAGE_POOL_SIZE];
 
-const char* message_type_to_string(uint8_t message_type) {
-    switch (message_type) {
-        case MESSAGE_TYPE_REGISTER: return "register";
-        case MESSAGE_TYPE_UPDATE: return "controller_update";
-        default: return "unknown";
+// Initialisierung des Nachrichtenpools und des Mutex
+void initialize_message_pool() {
+    // Initialisieren des Nachrichtenpools
+    for (int i = 0; i < MESSAGE_POOL_SIZE; i++) {
+        messagePool[i].inUse = false;
+        memset(&messagePool[i].message, 0, sizeof(MessageForWebSocket));
     }
 }
+
+MessageForWebSocket* allocateMessage() {
+    osMutexAcquire(gMessagePoolMutexHandle, osWaitForever);
+    for (int i = 0; i < MESSAGE_POOL_SIZE; i++) {
+        if (!messagePool[i].inUse) {
+            messagePool[i].inUse = 1;
+            // Nachricht initialisieren
+            memset(&messagePool[i].message, 0, sizeof(MessageForWebSocket));
+            osMutexRelease(gMessagePoolMutexHandle);
+            return &messagePool[i].message;
+        }
+    }
+    osMutexRelease(gMessagePoolMutexHandle);
+    LOG_WARN("allocateMessage: Message pool exhausted");
+    return NULL; // Pool erschöpft
+}
+
+void freeMessage(MessageForWebSocket* msg) {
+    osMutexAcquire(gMessagePoolMutexHandle, osWaitForever);
+    for (int i = 0; i < MESSAGE_POOL_SIZE; i++) {
+        if (&messagePool[i].message == msg) {
+            messagePool[i].inUse = 0;
+            // Nachricht löschen (optional)
+            memset(&messagePool[i].message, 0, sizeof(MessageForWebSocket));
+            osMutexRelease(gMessagePoolMutexHandle);
+            return;
+        }
+    }
+    osMutexRelease(gMessagePoolMutexHandle);
+    // Fehlerbehandlung, falls erforderlich
+}
+
+
+
+void send_status_update(const char *message_type, uint8_t device, uint8_t target, uint32_t value) {
+    LOG_DEBUG("send_status_update: Call with following parameters message_type = %s, device = %d, value = %d", message_type, device, value);
+
+    if (!is_registered) {
+        LOG_WARN("send_status_update: Not registered yet. Message not sent.");
+        return;
+    }
+
+    MessageForWebSocket* msg = allocateMessage();
+    if (msg == NULL) {
+        LOG_ERROR("send_status_update: Failed to allocate message");
+        return;
+    }
+
+    msg->message_type = message_type;
+    msg->device = device;
+    msg->target = target;
+    msg->value = value;
+    msg->action = 0; // Setzen, falls erforderlich
+    msg->json_payload[0] = '\0';
+
+    LOG_DEBUG("send_status_update: Vor dem Hinzufügen zur Warteschlange: message_type = %d, device = %d, value = %d", msg->message_type, msg->device, msg->value);
+
+    // Nachricht zur WebSocket-Queue hinzufügen
+    if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
+        LOG_ERROR("task_network.c: Failed to send JSON over WebSocket");
+        freeMessage(msg); // Nachricht freigeben, falls das Hinzufügen fehlschlägt
+    } else {
+        LOG_INFO("task_network.c: JSON message added to WebSocketQueue");
+    }
+}
+
+
+void send_register_message() {
+    MessageForWebSocket* msg = allocateMessage();
+    if (msg == NULL) {
+        LOG_ERROR("send_register_message: Failed to allocate message");
+        return;
+    }
+
+    // Nachricht initialisieren
+    msg->message_type = MESSAGE_TYPE_REGISTER; // Stellen Sie sicher, dass dies ein String ist
+    msg->device = DEVICE_CONTROLLER;
+    int ret = snprintf(msg->json_payload, sizeof(msg->json_payload),
+             "{\"message_type\":\"register\",\"device\":\"controller\",\"UID\":\"%s\"}",
+             uidStr);
+
+    if (ret < 0) {
+        LOG_ERROR("send_register_message: snprintf failed");
+        freeMessage(msg);
+        return;
+    } else if (ret >= sizeof(msg->json_payload)) {
+        LOG_WARN("send_register_message: JSON message was truncated");
+    }
+
+    LOG_DEBUG("send_register_message: msg->json_payload = %s", msg->json_payload);
+
+    // Nachricht zur Queue hinzufügen
+    if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
+        LOG_ERROR("send_register_message: Failed to send message to WebSocketQueue");
+        freeMessage(msg);
+    } else {
+        LOG_INFO("send_register_message: Register message added to WebSocketQueue");
+    }
+}
+
+
+const char* CommandTypeToString(HardwareCommandType commandType)
+{
+    switch (commandType)
+    {
+        case COMMAND_CONTROL_PUMP:
+            return "COMMAND_CONTROL_PUMP";
+        case COMMAND_CONTROL_LIGHT:
+            return "COMMAND_CONTROL_LIGHT";
+        default:
+            LOG_WARN("CommandTypeToString: Received unknown commandType %d", commandType);
+            return "UNKNOWN_COMMAND";
+    }
+}
+
+
+
 
 const char* device_to_string(uint8_t device) {
     switch (device) {
-        case DEVICE_CONTROLLER: return "controller";
-        case DEVICE_FRONTEND: return "frontend";
-        default: return "unknown";
+        case DEVICE_CONTROLLER:
+            return "controller";
+        case DEVICE_FRONTEND:
+            return "frontend";
+        /*
+        case DEVICE_PUMP_ZULAUF:
+            return "pump_zulauf";
+        case DEVICE_PUMP_ABLAUF:
+            return "pump_ablauf";
+        case DEVICE_SENSOR_OBEN:
+            return "sensorOben";
+        case DEVICE_SENSOR_UNTEN:
+            return "sensorUnten";
+        */
+        // Fügen Sie weitere Geräte hinzu, falls erforderlich
+        default:
+            LOG_WARN("device_to_string: Received unknown device %d", device);
+            return "unknown";
     }
 }
+
 
 const char* target_to_string(uint8_t target) {
     switch (target) {
-        case TARGET_WATER_LEVEL: return "wasserbeckenZustand";
-        case TARGET_LIGHT_INTENSITY: return "lightIntensity";
-        case TARGET_READYFORAUTORUN: return "readyForAutoRun";
-        case TARGET_PUMPE_ZULAUF: return "pumpeZulauf";
-        case TARGET_PUMPE_ABLAUF: return "pumpeAblauf";
-        case TARGET_SENSOR_VOLL: return "sensorVoll";
-        case TARGET_SENSOR_LEER: return "sensorLeer";
-        default: return "unknown";
+        case TARGET_LIGHT_INTENSITY:
+            return "lightIntensity";
+        case TARGET_WATER_LEVEL:
+            return "waterLevel";
+        case TARGET_READYFORAUTORUN:
+            return "readForAutorun";
+        case TARGET_PUMPE_ZULAUF:
+            return "pumpeZulauf";
+        case TARGET_PUMPE_ABLAUF:
+			return "pumpeAblauf";
+        // Fügen Sie weitere Ziele hinzu, falls erforderlich
+        default:
+            LOG_WARN("target_to_string: Received unknown target %d", target);
+            return "unknown";
     }
 }
+
 
 const char* action_to_string(uint8_t action) {
     switch (action) {
-        case ACTION_SET: return "set";
-        case ACTION_UPDATE: return "update";
-        default: return "unknown";
+        case ACTION_SET:
+            return "set";
+        case ACTION_UPDATE:
+            return "update";
+        default:
+            LOG_WARN("action_to_string: Received unknown action %d", action);
+            return "unknown";
     }
 }
 
 
-void add_message_to_websocket_queue(uint8_t message_type, uint8_t device, uint8_t target, uint8_t action, uint16_t value) {
-    MessageForWebSocket msg;
 
-    msg.message_type = message_type;
-    msg.device = device;
-    msg.target = target;
-    msg.action = action;
-    msg.value = value;
+void add_message_to_websocket_queue(const char *message_type, uint8_t device, uint8_t target, uint8_t action, uint16_t value) {
+    MessageForWebSocket* msg = allocateMessage();
+    if (msg == NULL) {
+        LOG_ERROR("add_message_to_websocket_queue: Failed to allocate message");
+        return;
+    }
 
-    printf("helper_websocket.c: I add the target %d with the action %d and value %u\r\n", msg.target, msg.action, msg.value);
+    msg->message_type = message_type;
+    msg->device = device;
+    msg->target = target;
+    msg->action = action;
+    msg->value = value;
+    msg->json_payload[0] = '\0';
+
+    LOG_DEBUG("add_message_to_websocket_queue: Preparing message with type=%d, device=%d, target=%d, action=%d, value=%u",
+              msg->message_type, msg->device, msg->target, msg->action, msg->value);
 
     if (osMessageQueuePut(xWebSocketQueueHandle, &msg, 0, 0) != osOK) {
-        printf("helper_websocket.c: Failed to send message to WebSocketQueue.\r\n");
+        LOG_ERROR("add_message_to_websocket_queue: Failed to send message to WebSocketQueue");
+        freeMessage(msg);
     } else {
-        printf("helper_websocket.c: new entry in WebSocketQueue: message_type=%d, device=%d, target=%d, action=%d, value=%u\r\n",
-               msg.message_type, msg.device, msg.target, msg.action, msg.value);
+        LOG_INFO("add_message_to_websocket_queue: New entry in WebSocketQueue: message_type=%d, device=%d, target=%d, action=%d, value=%u",
+                 msg->message_type, msg->device, msg->target, msg->action, msg->value);
     }
 }
 

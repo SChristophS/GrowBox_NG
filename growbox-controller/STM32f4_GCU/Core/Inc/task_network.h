@@ -3,19 +3,19 @@
 #ifndef TASK_NETWORK_H
 #define TASK_NETWORK_H
 
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include "stdlib.h"
 
-typedef struct {
-    uint8_t message_type;
-    uint8_t device;
-    uint8_t target;
-    uint8_t action;
-    uint16_t value;
-} MessageForWebSocket;
+
+#include <stdint.h>
+#include "message_types.h"
+#include <stdbool.h>
 
 void StartNetworkTask(void *argument);
+
+
+bool save_manual_mode(bool manualMode);
+bool load_manual_mode(bool *manualMode);
+
+
+
 
 #endif /* TASK_NETWORK_H */
