@@ -84,13 +84,27 @@
         "commands": [
             {
                 "target": "system",
-                "action": "setAutomaticMode",
+                "action": "setManualMode",
                 "value": true
             }
         ]
     }
 }
 
+{
+    "target_UUID": "003B001C3439471839303732",
+    "device": "frontend",
+    "message_type": "ControlCommand",
+    "payload": {
+        "commands": [
+            {
+                "target": "light",
+                "action": "setIntensity",
+                "value": 50
+            }
+        ]
+    }
+}
 
 {
     "target_UUID": "003B001C3439471839303732",
@@ -112,7 +126,7 @@
             },
             {
                 "target": "system",
-                "action": "setAutomaticMode",
+                "action": "setManualOverride",
                 "value": true
             }
         ]
