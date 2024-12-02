@@ -4,6 +4,8 @@ import PropTypes from "prop-types";
 
 function Device({ device, onClick, onRunClick, onStopClick }) {
     const { state } = device;
+	
+	console.log(device);
 
     return (
         <div
@@ -20,15 +22,13 @@ function Device({ device, onClick, onRunClick, onStopClick }) {
             <p>Growprogram is running
                 <span className={`status-dot ${state?.isRunning ? 'running' : 'notRunning'}`}></span>
             </p>
-            <p>Water Level: {state?.wasserbeckenZustand !== null ? (state.wasserbeckenZustand ? "Full" : "Empty") : "Loading..."}</p>
-            <p>Light Intensity: {state?.lightIntensity !== null ? state.lightIntensity : "Loading..."}</p>
-            <p>Pumpe Oben: {state?.pumpeOben !== null ? (state.pumpeOben ? "On" : "Off") : "Loading..."}</p>
-            <p>Pumpe Unten: {state?.pumpeUnten !== null ? (state.pumpeUnten ? "On" : "Off") : "Loading..."}</p>
+            <p>Soll-Wasserlevel: {state?.wasserbeckenZustand !== null ? (state.wasserbeckenZustand ? "Voll" : "Leer") : "Loading..."}</p>
+			<p>pumpeZulauf: {state?.pumpeZulauf !== null ? (state.pumpeZulauf ? "On" : "Off") : "Loading..."}</p>
+            <p>pumpeAblauf: {state?.pumpeAblauf !== null ? (state.pumpeAblauf ? "On" : "Off") : "Loading..."}</p>
             <p>Sensor Oben: {state?.sensorOben !== null ? (state.sensorOben ? "Activated" : "Deactivated") : "Loading..."}</p>
-            <p>Sensor Unten: {state?.sensorUnten !== null ? (state.sensorUnten ? "Activated" : "Deactivated") : "Loading..."}</p>
-            <p>Automatic Mode: {state?.automaticMode !== null ? (state.automaticMode ? "Enabled" : "Disabled") : "Loading..."}</p>
+            <p>Sensor Unten: {state?.sensorUnten !== null ? (state.sensorUnten ? "Activated" : "Deactivated") : "Loading..."}</p>           
+			<p>Light Intensity: {state?.lightIntensity !== null ? state.lightIntensity : "Loading..."}</p>
             <p>Manual Mode: {state?.manualMode !== null ? (state.manualMode ? "Enabled" : "Disabled") : "Loading..."}</p>
-            <p>Grow Cycle Config: {state?.growCycleConfig ? "Loaded" : "Not Loaded"}</p>
 
             <div className="button-container">
                 <Button variant="success" onClick={(event) => { event.stopPropagation(); onRunClick(device.device_id); }}>Run</Button>

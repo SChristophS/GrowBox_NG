@@ -1,18 +1,9 @@
 import React, { useState, useEffect, forwardRef, useImperativeHandle } from "react";
-import { Modal, Form, Button, Alert, Spinner, Row, Col } from "react-bootstrap";
+import { Modal, Form, Button, Alert, Spinner, Row, Col, Card } from "react-bootstrap";
 import PropTypes from "prop-types";
 
-const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings, onSendSpecificCommand }, ref) => {
-    const [settings, setSettings] = useState({
-        waterBeckenZustand: device?.state.wasserbeckenZustand || false,
-        lightIntensity: device?.state.lightIntensity || 0,
-        automaticMode: device?.state.automaticMode || false,
-        manualMode: device?.state.manualMode || false,
-        pumpeOben: device?.state.pumpeOben || false,
-        pumpeUnten: device?.state.pumpeUnten || false,
-        // Weitere Einstellungen hier hinzufügen
-    });
-
+const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings }, ref) => {
+    const [settings, setSettings] = useState({});
     const [loadingStates, setLoadingStates] = useState({});
     const [responseReceived, setResponseReceived] = useState({});
     const [errorStates, setErrorStates] = useState({});
@@ -43,6 +34,8 @@ const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings, onSendSp
             return;
         }
 
+        console.log(`[DEBUG] Sending command (${commandKey}):`, command);
+
         setLoadingStates(prev => ({ ...prev, [commandKey]: true }));
         setResponseReceived(prev => ({ ...prev, [commandKey]: false }));
         setErrorStates(prev => ({ ...prev, [commandKey]: null }));
@@ -58,8 +51,8 @@ const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings, onSendSp
         }, 5000); // Warte 5 Sekunden auf eine Antwort
     };
 
-    // Beispiel für das Senden der Lichtintensität
-    const handleSendLightIntensity = () => {
+    // Generische Funktion zum Senden von ControlCommands
+    const handleSendControlCommand = (commandKey, target, action, value, additionalFields = {}) => {
         const command = {
             target_UUID: device.device_id,
             device: "frontend",
@@ -67,68 +60,10 @@ const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings, onSendSp
             payload: {
                 commands: [
                     {
-                        target: "light",
-                        action: "setIntensity",
-                        value: settings.lightIntensity
-                    }
-                ]
-            }
-        };
-        sendCommand("lightIntensity", command);
-    };
-
-    // Funktion zum Senden des Automatikmodus
-    const handleSendAutomaticMode = () => {
-        const command = {
-            target_UUID: device.device_id,
-            device: "frontend",
-            message_type: "ControlCommand",
-            payload: {
-                commands: [
-                    {
-                        target: "system",
-                        action: "setAutomaticMode",
-                        value: settings.automaticMode
-                    }
-                ]
-            }
-        };
-        sendCommand("automaticMode", command);
-    };
-
-    // Funktion zum Senden des manuellen Modus
-    const handleSendManualMode = () => {
-        const command = {
-            target_UUID: device.device_id,
-            device: "frontend",
-            message_type: "ControlCommand",
-            payload: {
-                commands: [
-                    {
-                        target: "system",
-                        action: "setManualMode",
-                        value: settings.manualMode
-                    }
-                ]
-            }
-        };
-        sendCommand("manualMode", command);
-    };
-
-    // Funktion zum Senden der Pumpenbefehle
-    const handleSendPumpCommand = (pumpId, pumpState) => {
-        const commandKey = `pump${pumpId}`;
-        const command = {
-            target_UUID: device.device_id,
-            device: "frontend",
-            message_type: "ControlCommand",
-            payload: {
-                commands: [
-                    {
-                        target: "pump",
-                        action: "setState",
-                        deviceId: pumpId,
-                        value: pumpState
+                        target: target,
+                        action: action,
+                        value: value,
+                        ...additionalFields
                     }
                 ]
             }
@@ -136,26 +71,29 @@ const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings, onSendSp
         sendCommand(commandKey, command);
     };
 
-    // Funktion zum Senden der Wasserzustandsbefehle
-    const handleSendWaterState = () => {
-        const command = {
-            target_UUID: device.device_id,
-            device: "frontend",
-            message_type: "ControlCommand",
-            payload: {
-                commands: [
-                    {
-                        target: "water",
-                        action: "setState",
-                        value: settings.waterBeckenZustand ? "full" : "empty"
-                    }
-                ]
-            }
-        };
-        sendCommand("waterBeckenZustand", command);
+    // Funktionen für spezifische Befehle
+    const handleSendLightIntensity = () => {
+        handleSendControlCommand("lightIntensity", "light", "setIntensity", settings.lightIntensity);
     };
 
-    // Funktion zum Senden der Zeitsynchronisation
+    const handleSendAutomaticMode = () => {
+        handleSendControlCommand("automaticMode", "system", "setAutomaticMode", settings.automaticMode);
+    };
+
+    const handleSendManualMode = () => {
+        handleSendControlCommand("manualMode", "system", "setManualMode", settings.manualMode);
+    };
+
+    const handleSendPumpCommand = (pumpId, pumpState) => {
+        const commandKey = `pump${pumpId}`;
+        handleSendControlCommand(commandKey, "pump", "setState", pumpState, { deviceId: pumpId });
+    };
+
+    const handleSendWaterState = () => {
+        const waterState = settings.waterBeckenZustand ? "full" : "empty";
+        handleSendControlCommand("waterBeckenZustand", "water", "setState", waterState);
+    };
+
     const handleSendTimeSync = () => {
         const currentTime = new Date().toISOString();
         const command = {
@@ -169,7 +107,6 @@ const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings, onSendSp
         sendCommand("timeSync", command);
     };
 
-    // Funktion zum Löschen des EEPROMs
     const handleEraseEEPROM = () => {
         const command = {
             target_UUID: device.device_id,
@@ -186,155 +123,174 @@ const DeviceModal = forwardRef(({ show, onHide, device, onSendSettings, onSendSp
             </Modal.Header>
             <Modal.Body>
                 <Form>
-                    {/* Lichtintensität */}
-                    <Form.Group controlId="formLightIntensity">
-                        <Form.Label>Lichtintensität</Form.Label>
-                        <Row>
-                            <Col xs={8}>
-                                <Form.Control
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    value={settings.lightIntensity}
-                                    onChange={(e) => setSettings({ ...settings, lightIntensity: parseInt(e.target.value, 10) })}
-                                />
-                            </Col>
-                            <Col xs={4}>
-                                <Button variant="primary" onClick={handleSendLightIntensity}>
-                                    {loadingStates.lightIntensity ? <Spinner animation="border" size="sm" /> : "Senden"}
-                                </Button>
-                            </Col>
-                        </Row>
-                        {errorStates.lightIntensity && (
-                            <Alert variant="warning" className="mt-2">
-                                {errorStates.lightIntensity}
-                            </Alert>
-                        )}
-                    </Form.Group>
+                    {/* Lichtsteuerung */}
+                    <Card className="mb-3">
+                        <Card.Header>Lichtsteuerung</Card.Header>
+                        <Card.Body>
+                            <Form.Group as={Row} controlId="formLightIntensity" className="align-items-center">
+                                <Form.Label column sm={4}>Lichtintensität</Form.Label>
+                                <Col sm={4}>
+                                    <Form.Control
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={settings.lightIntensity}
+                                        onChange={(e) => setSettings({ ...settings, lightIntensity: parseInt(e.target.value, 10) })}
+                                    />
+                                </Col>
+                                <Col sm={4}>
+                                    <Button variant="primary" onClick={handleSendLightIntensity} block>
+                                        {loadingStates.lightIntensity ? <Spinner animation="border" size="sm" /> : "Senden"}
+                                    </Button>
+                                </Col>
+                            </Form.Group>
+                            {errorStates.lightIntensity && (
+                                <Alert variant="warning" className="mt-2">
+                                    {errorStates.lightIntensity}
+                                </Alert>
+                            )}
+                        </Card.Body>
+                    </Card>
 
-                    {/* Automatikmodus */}
-                    <Form.Group controlId="formAutomaticMode">
-                        <Form.Check
-                            type="checkbox"
-                            label="Automatikmodus"
-                            checked={settings.automaticMode}
-                            onChange={(e) => setSettings({ ...settings, automaticMode: e.target.checked })}
-                        />
-                        <Button variant="primary" className="mt-2" onClick={handleSendAutomaticMode}>
-                            {loadingStates.automaticMode ? <Spinner animation="border" size="sm" /> : "Senden"}
-                        </Button>
-                        {errorStates.automaticMode && (
-                            <Alert variant="warning" className="mt-2">
-                                {errorStates.automaticMode}
-                            </Alert>
-                        )}
-                    </Form.Group>
-
-                    {/* Manueller Modus */}
-                    <Form.Group controlId="formManualMode">
-                        <Form.Check
-                            type="checkbox"
-                            label="Manueller Modus"
-                            checked={settings.manualMode}
-                            onChange={(e) => setSettings({ ...settings, manualMode: e.target.checked })}
-                        />
-                        <Button variant="primary" className="mt-2" onClick={handleSendManualMode}>
-                            {loadingStates.manualMode ? <Spinner animation="border" size="sm" /> : "Senden"}
-                        </Button>
-                        {errorStates.manualMode && (
-                            <Alert variant="warning" className="mt-2">
-                                {errorStates.manualMode}
-                            </Alert>
-                        )}
-                    </Form.Group>
+                    {/* Systemsteuerung */}
+                    <Card className="mb-3">
+                        <Card.Header>Systemsteuerung</Card.Header>
+                        <Card.Body>
+                            <Form.Group as={Row} controlId="formManualMode" className="align-items-center">
+                                <Col sm={8}>
+                                    <Form.Check
+                                        type="switch"
+                                        label="Manueller Modus"
+                                        checked={settings.manualMode}
+                                        onChange={(e) => setSettings({ ...settings, manualMode: e.target.checked })}
+                                    />
+                                </Col>
+                                <Col sm={4}>
+                                    <Button variant="primary" onClick={handleSendManualMode} block>
+                                        {loadingStates.manualMode ? <Spinner animation="border" size="sm" /> : "Senden"}
+                                    </Button>
+                                </Col>
+                            </Form.Group>
+                            {errorStates.manualMode && (
+                                <Alert variant="warning" className="mt-2">
+                                    {errorStates.manualMode}
+                                </Alert>
+                            )}
+                        </Card.Body>
+                    </Card>
 
                     {/* Pumpensteuerung */}
-                    <Form.Group controlId="formPumpControl">
-                        <Form.Label>Pumpensteuerung</Form.Label>
-                        {/* Pumpe Oben */}
-                        <Row className="align-items-center">
-                            <Col xs={6}>
-                                <Form.Check
-                                    type="checkbox"
-                                    label="Pumpe Oben"
-                                    checked={settings.pumpeOben}
-                                    onChange={(e) => setSettings({ ...settings, pumpeOben: e.target.checked })}
-                                />
-                            </Col>
-                            <Col xs={6}>
-                                <Button variant="primary" onClick={() => handleSendPumpCommand(1, settings.pumpeOben)}>
-                                    {loadingStates.pump1 ? <Spinner animation="border" size="sm" /> : "Senden"}
-                                </Button>
-                            </Col>
-                        </Row>
-                        {errorStates.pump1 && (
-                            <Alert variant="warning" className="mt-2">
-                                {errorStates.pump1}
-                            </Alert>
-                        )}
-                        {/* Pumpe Unten */}
-                        <Row className="align-items-center mt-2">
-                            <Col xs={6}>
-                                <Form.Check
-                                    type="checkbox"
-                                    label="Pumpe Unten"
-                                    checked={settings.pumpeUnten}
-                                    onChange={(e) => setSettings({ ...settings, pumpeUnten: e.target.checked })}
-                                />
-                            </Col>
-                            <Col xs={6}>
-                                <Button variant="primary" onClick={() => handleSendPumpCommand(2, settings.pumpeUnten)}>
-                                    {loadingStates.pump2 ? <Spinner animation="border" size="sm" /> : "Senden"}
-                                </Button>
-                            </Col>
-                        </Row>
-                        {errorStates.pump2 && (
-                            <Alert variant="warning" className="mt-2">
-                                {errorStates.pump2}
-                            </Alert>
-                        )}
-                    </Form.Group>
+                    <Card className="mb-3">
+                        <Card.Header>Pumpensteuerung</Card.Header>
+                        <Card.Body>
+                            <Form.Group as={Row} controlId="formPumpOben" className="align-items-center">
+                                <Col sm={8}>
+                                    <Form.Check
+                                        type="switch"
+                                        label="Pumpe Oben"
+                                        checked={settings.pumpeOben}
+                                        onChange={(e) => setSettings({ ...settings, pumpeOben: e.target.checked })}
+                                    />
+                                </Col>
+                                <Col sm={4}>
+                                    <Button variant="primary" onClick={() => handleSendPumpCommand(1, settings.pumpeOben)} block>
+                                        {loadingStates.pump1 ? <Spinner animation="border" size="sm" /> : "Senden"}
+                                    </Button>
+                                </Col>
+                            </Form.Group>
+                            {errorStates.pump1 && (
+                                <Alert variant="warning" className="mt-2">
+                                    {errorStates.pump1}
+                                </Alert>
+                            )}
 
-                    {/* Wasserzustand */}
-                    <Form.Group controlId="formWaterBeckenZustand">
-                        <Form.Check
-                            type="checkbox"
-                            label="Wasserbecken Zustand (Voll)"
-                            checked={settings.waterBeckenZustand}
-                            onChange={(e) => setSettings({ ...settings, waterBeckenZustand: e.target.checked })}
-                        />
-                        <Button variant="primary" className="mt-2" onClick={handleSendWaterState}>
-                            {loadingStates.waterBeckenZustand ? <Spinner animation="border" size="sm" /> : "Senden"}
-                        </Button>
-                        {errorStates.waterBeckenZustand && (
-                            <Alert variant="warning" className="mt-2">
-                                {errorStates.waterBeckenZustand}
-                            </Alert>
-                        )}
-                    </Form.Group>
+                            <Form.Group as={Row} controlId="formPumpUnten" className="align-items-center">
+                                <Col sm={8}>
+                                    <Form.Check
+                                        type="switch"
+                                        label="Pumpe Unten"
+                                        checked={settings.pumpeUnten}
+                                        onChange={(e) => setSettings({ ...settings, pumpeUnten: e.target.checked })}
+                                    />
+                                </Col>
+                                <Col sm={4}>
+                                    <Button variant="primary" onClick={() => handleSendPumpCommand(2, settings.pumpeUnten)} block>
+                                        {loadingStates.pump2 ? <Spinner animation="border" size="sm" /> : "Senden"}
+                                    </Button>
+                                </Col>
+                            </Form.Group>
+                            {errorStates.pump2 && (
+                                <Alert variant="warning" className="mt-2">
+                                    {errorStates.pump2}
+                                </Alert>
+                            )}
+                        </Card.Body>
+                    </Card>
 
-                    {/* Zeitsynchronisation */}
-                    <Form.Group controlId="formTimeSync">
-                        <Form.Label>Zeitsynchronisation</Form.Label>
-                        <Button variant="primary" className="ml-2" onClick={handleSendTimeSync}>
-                            {loadingStates.timeSync ? <Spinner animation="border" size="sm" /> : "Zeit synchronisieren"}
-                        </Button>
-                        {errorStates.timeSync && (
-                            <Alert variant="warning" className="mt-2">
-                                {errorStates.timeSync}
-                            </Alert>
-                        )}
-                    </Form.Group>
+                    {/* Wassersteuerung */}
+                    <Card className="mb-3">
+                        <Card.Header>Wassersteuerung</Card.Header>
+                        <Card.Body>
+                            <Form.Group as={Row} controlId="formWaterBeckenZustand" className="align-items-center">
+                                <Col sm={8}>
+                                    <Form.Check
+                                        type="switch"
+                                        label="Wasserbecken Zustand (Voll)"
+                                        checked={settings.waterBeckenZustand}
+                                        onChange={(e) => setSettings({ ...settings, waterBeckenZustand: e.target.checked })}
+                                    />
+                                </Col>
+                                <Col sm={4}>
+                                    <Button variant="primary" onClick={handleSendWaterState} block>
+                                        {loadingStates.waterBeckenZustand ? <Spinner animation="border" size="sm" /> : "Senden"}
+                                    </Button>
+                                </Col>
+                            </Form.Group>
+                            {errorStates.waterBeckenZustand && (
+                                <Alert variant="warning" className="mt-2">
+                                    {errorStates.waterBeckenZustand}
+                                </Alert>
+                            )}
+                        </Card.Body>
+                    </Card>
 
-                    {/* EEPROM löschen */}
-                    <Button variant="warning" className="mt-3" onClick={handleEraseEEPROM}>
-                        {loadingStates.eraseEEPROM ? <Spinner animation="border" size="sm" /> : "EEPROM löschen"}
-                    </Button>
-                    {errorStates.eraseEEPROM && (
-                        <Alert variant="warning" className="mt-2">
-                            {errorStates.eraseEEPROM}
-                        </Alert>
-                    )}
+                    {/* Zeitsynchronisation und EEPROM */}
+                    <Card className="mb-3">
+                        <Card.Header>Systemfunktionen</Card.Header>
+                        <Card.Body>
+                            <Row className="align-items-center mb-2">
+                                <Col sm={8}>
+                                    <Form.Label>Zeitsynchronisation</Form.Label>
+                                </Col>
+                                <Col sm={4}>
+                                    <Button variant="primary" onClick={handleSendTimeSync} block>
+                                        {loadingStates.timeSync ? <Spinner animation="border" size="sm" /> : "Jetzt synchronisieren"}
+                                    </Button>
+                                </Col>
+                            </Row>
+                            {errorStates.timeSync && (
+                                <Alert variant="warning" className="mt-2">
+                                    {errorStates.timeSync}
+                                </Alert>
+                            )}
+
+                            <Row className="align-items-center">
+                                <Col sm={8}>
+                                    <Form.Label>EEPROM löschen</Form.Label>
+                                </Col>
+                                <Col sm={4}>
+                                    <Button variant="danger" onClick={handleEraseEEPROM} block>
+                                        {loadingStates.eraseEEPROM ? <Spinner animation="border" size="sm" /> : "Löschen"}
+                                    </Button>
+                                </Col>
+                            </Row>
+                            {errorStates.eraseEEPROM && (
+                                <Alert variant="warning" className="mt-2">
+                                    {errorStates.eraseEEPROM}
+                                </Alert>
+                            )}
+                        </Card.Body>
+                    </Card>
                 </Form>
             </Modal.Body>
             <Modal.Footer>
@@ -349,7 +305,6 @@ DeviceModal.propTypes = {
     onHide: PropTypes.func.isRequired,
     device: PropTypes.object,
     onSendSettings: PropTypes.func.isRequired,
-    onSendSpecificCommand: PropTypes.func.isRequired,
 };
 
 export default DeviceModal;

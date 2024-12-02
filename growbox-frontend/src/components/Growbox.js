@@ -11,18 +11,16 @@ const WEBSOCKET_HOST = process.env.REACT_APP_WEBSOCKET_HOST || '192.168.178.25';
 const WEBSOCKET_PORT = process.env.REACT_APP_WEBSOCKET_PORT || 8085;
 const DEFAULT_USERNAME = process.env.REACT_APP_USERNAME || 'christoph';
 
+
+
 const initialDeviceState = {
     wasserbeckenZustand: null,
-    lightIntensity: null,
-    readyForAutoRun: null,
-    pumpeOben: null,
-    pumpeUnten: null,
+    pumpeZulauf: null,
+    pumpeAblauf: null,
     sensorOben: null,
     sensorUnten: null,
-    automaticMode: null,
+    lightIntensity: null,
     manualMode: null,
-    growCycleConfig: null,
-    controllerState: null,
 };
 
 const deviceReducer = (state, action) => {
@@ -121,8 +119,11 @@ function Growbox() {
                         type: 'UPDATE_DEVICES_STATUS',
                         payload: controllers,
                     });
+					
+					console.error(`Registration confirmed from Server`);
                     // Nach erfolgreicher Registrierung Anfragen an den Controller senden
                     devicesRef.current.forEach(device => {
+						console.error(`Sende ControllerRequest for ${device.device_id}`);
                         sendControllerRequests(device.device_id);
                     });
                     break;
@@ -173,7 +174,7 @@ function Growbox() {
                     break;
 
                 case "ControllerStateResponse":
-                case "AutomaticModeResponse":
+                case "ManualModeResponse":
                 case "GrowCycleConfigResponse":
                     // Verarbeiten der Antworten vom Controller
                     handleControllerResponse(data);
@@ -231,7 +232,7 @@ function Growbox() {
     const sendControllerRequests = (deviceID) => {
         const requests = [
             { message_type: "ControllerStateRequest" },
-            { message_type: "AutomaticModeRequest" },
+            { message_type: "ManualModeRequest" },
             { message_type: "GrowCycleConfigRequest" }
         ];
 
@@ -252,6 +253,8 @@ const handleControllerResponse = (data) => {
         console.error("Invalid controller response:", data);
         return;
     }
+	
+	console.log("message_type:", message_type);
 
     switch (message_type) {
         case "ControllerStateResponse":
@@ -266,17 +269,6 @@ const handleControllerResponse = (data) => {
                     }
                 });
             }
-            break;
-
-        case "AutomaticModeResponse":
-            dispatch({
-                type: 'UPDATE_DEVICE_STATE',
-                payload: {
-                    UID,
-                    target: 'automaticMode',
-                    value: payload.automaticMode
-                }
-            });
             break;
 
         case "ManualModeResponse":
